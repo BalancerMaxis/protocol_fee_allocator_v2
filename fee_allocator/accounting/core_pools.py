@@ -65,13 +65,13 @@ class CorePool(AbstractCorePool):
         return total_usd
 
     @property
-    def earned_total_fees_usd(self) -> Decimal:
+    def total_earned_fees_usd(self) -> Decimal:
         return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
 
     @property
     @return_zero_if_dust()
     def earned_fee_share_of_chain_usd(self) -> Decimal:
-        return self.earned_total_fees_usd / self.chain.total_core_pool_fees_usd
+        return self.total_earned_fees_usd / self.chain.total_earned_fees_usd
 
     @property
     @return_zero_if_dust(any_or_all="all")

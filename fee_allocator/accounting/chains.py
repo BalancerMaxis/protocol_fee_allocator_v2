@@ -63,8 +63,8 @@ class Chain(AbstractChain):
         self.web3 = Web3(Web3.HTTPProvider(rpc_url))
 
     @property
-    def total_core_pool_fees_usd(self) -> Decimal:
-        return sum([core_pool.earned_total_fees_usd for core_pool in self.core_pools])
+    def total_earned_fees_usd(self) -> Decimal:
+        return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
 
 
 class Chains:
