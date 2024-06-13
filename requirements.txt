@@ -1,0 +1,8 @@
+python-dotenv
+joblib==1.4.2
+pydantic==2.7.4
+web3==6.9.0
+gql[requests]==3.4.1
+pandas==2.0.3
+git+https://github.com/BalancerMaxis/bal_addresses@0.9.4
+# git+https://github.com/BalancerMaxis/bal_tools@v0.0.3

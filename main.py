@@ -1,0 +1,49 @@
+import argparse
+import json
+import os
+from datetime import datetime
+
+from dotenv import load_dotenv
+
+from fee_allocator.fee_allocator import FeeAllocator
+from fee_allocator.accounting.chains import Chain, Chains
+from fee_allocator.utils import get_last_thursday_odd_week
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--ts_now", help="Current timestamp", type=int, required=False)
+parser.add_argument(
+    "--ts_in_the_past", help="Timestamp in the past", type=int, required=False
+)
+parser.add_argument(
+    "--output_file_name", help="Output file name", type=str, required=False
+)
+parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
+
+ROOT = os.path.dirname(__file__)
+
+now = datetime.utcnow()
+DELTA = 10_000
+TS_NOW = int(now.timestamp()) - DELTA
+TS_2_WEEKS_AGO = int(get_last_thursday_odd_week().timestamp())
+
+
+def main() -> None:
+    load_dotenv()
+    ts_now = parser.parse_args().ts_now or TS_NOW
+    ts_in_the_past = parser.parse_args().ts_in_the_past or TS_2_WEEKS_AGO
+    print(
+        f"\n\n\n------\nRunning  from timestamps {ts_in_the_past} to {ts_now}\n------\n\n\n"
+    )
+    fees_file_name = parser.parse_args().fees_file_name or "current_fees_collected.json"
+    input_fees_path = f"fee_allocator/fees_collected/{fees_file_name}"
+
+    with open(input_fees_path) as f:
+        input_fees = json.load(f)
+
+    fee_runner = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
+    fee_runner.generate_bribe_csv()
+
+
+if __name__ == "__main__":
+    main()
