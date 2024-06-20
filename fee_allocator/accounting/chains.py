@@ -161,33 +161,22 @@ class Chains:
 
         if start_snap and end_snap:
             logger.info(f"fetching twap prices for {label} on {chain.name}")
-            try:
-                bpt_price = chain.subgraph.get_twap_price_bpt(
-                    pool_id,
-                    chain.name,
-                    self.date_range,
-                    chain.web3,
-                    chain.block_range[1],
-                )
-                token_prices = chain.subgraph.get_twap_price_token(
-                    [x.address for x in start_snap.tokens], chain.name, self.date_range
-                )
-            except ValueError:
-                raise ValueError(
-                    f"error getting twap price for {label} on {chain.name}"
-                )
-
-            core_pool = CorePool(
-                chain=chain,
-                pool_id=pool_id,
-                label=label,
-                bpt_price=bpt_price,
-                tokens_price=token_prices,
-                gauge_address=pool_to_gauge[pool_id],
-                start_snap=start_snap,
-                end_snap=end_snap,
+            prices = chain.subgraph.get_twap_price_pool(
+                pool_id, chain.name, self.date_range, chain.web3, chain.block_range[1]
             )
-            chain.core_pools.append(core_pool)
+
+            chain.core_pools.append(
+                CorePool(
+                    chain=chain,
+                    pool_id=pool_id,
+                    label=label,
+                    bpt_price=prices.bpt_price,
+                    tokens_price=prices.token_prices,
+                    gauge_address=pool_to_gauge[pool_id],
+                    start_snap=start_snap,
+                    end_snap=end_snap,
+                )
+            )
         else:
             logger.warning(f"No snapshots found for {pool_id} - {label}")
 
