@@ -200,7 +200,7 @@ class FeeAllocator:
         usdc.transfer("maxiKeepers/veBalFeeInjector", vebal_usdc_amount * 1e6)
         bal.transfer("maxiKeepers/veBalFeeInjector", vebal_bal_amount * 1e18)
 
-        builder.output_payload("payload.json")
+        builder.output_payload("fee_allocator/payloads/payload.json")
 
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:
