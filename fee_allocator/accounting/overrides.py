@@ -36,7 +36,7 @@ class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
 
 
 class RethWethOverride(CorePoolOverride):
-    pool_id = "0x05ff47afada98a98982113758878f9a8b9fdda0a000000000000000000000645"
+    pool_id = "0x1e19cf2d73a72ef1332c882f20534b6519be0276000200000000000000000112"
 
     @property
     def to_aura_incentives_usd(self) -> Decimal:
