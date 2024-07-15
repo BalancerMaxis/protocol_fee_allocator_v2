@@ -23,7 +23,7 @@ parser.add_argument("--fees_file_name", help="Fees file name", type=str, require
 ROOT = os.path.dirname(__file__)
 
 now = datetime.utcnow()
-DELTA = 10_000
+DELTA = 6000
 TS_NOW = int(now.timestamp()) - DELTA
 TS_2_WEEKS_AGO = int(get_last_thursday_odd_week().timestamp())
 
@@ -41,8 +41,10 @@ def main() -> None:
     with open(input_fees_path) as f:
         input_fees = json.load(f)
 
-    fee_runner = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
-    fee_runner.generate_bribe_csv()
+    fee_allocator = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
+    fee_allocator.generate_incentives_csv()
+    file_name = fee_allocator.generate_bribe_csv()
+    fee_allocator.generate_payload(file_name)
 
 
 if __name__ == "__main__":

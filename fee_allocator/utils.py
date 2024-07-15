@@ -1,5 +1,28 @@
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 import pytz
+import requests
+from fee_allocator.constants import HH_API_URL
+from web3 import Web3
+import os
+from dotenv import load_dotenv
+from fee_allocator.logger import logger
+
+
+if TYPE_CHECKING:
+    from fee_allocator.accounting.chains import Chain
+
+
+load_dotenv()
+
+EXPLORER_URLS = {
+    "mainnet": "https://api.etherscan.io/api",
+    "arbitrum": "https://api.arbiscan.io/api",
+    "polygon": "https://api.polygonscan.com/api",
+    "gnosis": "https://api.gnosisscan.io/api",
+    "avalanche": "https://api.snowtrace.io/api",
+    "base": "https://api.basescan.org/api",
+}
 
 
 def get_last_thursday_odd_week():
@@ -33,3 +56,40 @@ def get_last_thursday_odd_week():
     )
 
     return last_thursday_odd_utc
+
+
+def get_hh_aura_target(target: str) -> str:
+    response = requests.get(f"{HH_API_URL}/aura")
+    options = response.json()["data"]
+    for option in options:
+        if Web3.to_checksum_address(option["proposal"]) == target:
+            return option["proposalHash"]
+    return False
+
+
+def get_block_by_ts(timestamp, chain: "Chain", before=False):
+    try:
+        api_key = os.getenv(f"EXPLORER_API_KEY_{chain.name.upper()}")
+    except KeyError:
+        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
+
+    params = {
+        "module": "block",
+        "action": "getblocknobytime",
+        "timestamp": timestamp,
+        "closest": "before" if before else "after",
+        "apikey": api_key,
+    }
+
+    response = requests.get(EXPLORER_URLS[chain.name], params=params)
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError:
+        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
+
+    data = response.json()
+
+    if data["status"] == "1" and data["message"] == "OK":
+        return int(data["result"])
+    else:
+        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)

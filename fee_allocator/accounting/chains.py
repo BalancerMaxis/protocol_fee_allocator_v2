@@ -16,10 +16,15 @@ from bal_addresses import AddrBook
 
 from fee_allocator.accounting.core_pools import CorePool
 from fee_allocator.accounting.interfaces import AbstractChain
-from fee_allocator.accounting.models import FeeConfig, RawCorePoolData
-from fee_allocator.constants import FEE_CONSTANTS_URL, CORE_POOLS_URL
+from fee_allocator.accounting.models import FeeConfig, RawCorePoolData, RerouteConfig
+from fee_allocator.constants import (
+    FEE_CONSTANTS_URL,
+    CORE_POOLS_URL,
+    REROUTE_CONFIG_URL,
+)
 from fee_allocator.accounting.decorators import round
 from fee_allocator.logger import logger
+from fee_allocator.utils import get_block_by_ts
 
 
 CACHE_DIR = Path(__file__).parent / "cache"
@@ -66,6 +71,31 @@ class Chain(AbstractChain):
     def total_earned_fees_usd(self) -> Decimal:
         return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
 
+    @property
+    def total_earned_fees_redistributed_usd(self) -> Decimal:
+        return sum(
+            [
+                core_pool.redistributed.total_earned_fees_usd
+                for core_pool in self.core_pools
+            ]
+        )
+
+    @property
+    def incentives_to_distribute_per_pool(self) -> Decimal:
+        under_min_aura_pools = [
+            pool
+            for pool in self.core_pools
+            if pool.to_aura_incentives_usd < self.fee_config.min_aura_incentive
+        ]
+
+        if not under_min_aura_pools:
+            return Decimal(0)
+
+        debt_to_aura_market = sum(
+            [pool.to_aura_incentives_usd for pool in under_min_aura_pools]
+        )
+        return debt_to_aura_market / len(under_min_aura_pools)
+
 
 class Chains:
     def __init__(
@@ -75,6 +105,7 @@ class Chains:
         self.date_range = date_range
         self.fee_config = FeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.raw_core_pools = RawCorePoolData(**requests.get(CORE_POOLS_URL).json())
+        self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
 
         self._set_block_range()
         self._set_aura_vebal_share()
@@ -107,7 +138,7 @@ class Chains:
             chain.date_range = self.date_range
             chain.fee_config = self.fee_config
 
-            if self._cache_file_path(chain).exists() and use_cache:
+            if use_cache and self._cache_file_path(chain).exists():
                 self._load_core_pools_from_cache(chain)
             else:
                 self._process_core_pools(chain)
@@ -123,7 +154,7 @@ class Chains:
         end_snaps = chain.subgraph.get_balancer_pool_snapshots(
             block=chain.block_range[1], pools_per_req=1000, limit=5000
         )
-        pools: List[Pool] = chain.subgraph.fetch_all_pools_info()
+        pools = chain.subgraph.fetch_all_pools_info()
 
         pool_to_gauge = {}
         for pool in pools:
@@ -178,7 +209,7 @@ class Chains:
                 )
             )
         else:
-            logger.warning(f"No snapshots found for {pool_id} - {label}")
+            logger.warning(f"No snapshots found for {label} - {pool_id}")
 
     def _set_aura_vebal_share(self) -> Decimal:
         if not self.mainnet:
@@ -195,12 +226,8 @@ class Chains:
 
     def _set_block_range(self) -> None:
         for chain in self.all_chains:
-            start_block = chain.subgraph.get_first_block_after_utc_timestamp(
-                self.date_range[0]
-            )
-            end_block = chain.subgraph.get_first_block_after_utc_timestamp(
-                self.date_range[1]
-            )
+            start_block = get_block_by_ts(self.date_range[0], chain)
+            end_block = get_block_by_ts(self.date_range[1], chain)
 
             chain.block_range = (start_block, end_block)
             logger.info(f"set blocks for {chain.name}: {start_block} - {end_block}")

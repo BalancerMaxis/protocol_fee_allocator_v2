@@ -29,3 +29,11 @@ class RawCorePoolData(BaseModel):
             return getattr(self, chain)
         except AttributeError:
             raise KeyError(f"'{chain}' not found in raw core pools data")
+
+
+class RerouteConfig(BaseModel):
+    mainnet: Dict
+
+    def model_post_init(self, __context):
+        if any(self.__dict__.values()):
+            raise ValueError(f"Reroute logic not implemented")
