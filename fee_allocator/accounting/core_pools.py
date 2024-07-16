@@ -47,6 +47,12 @@ class RedistributedIncentives:
 
     @property
     def _base_incentives(self) -> Decimal:
+        if self.core_pool.override:
+            return (
+                self.core_pool.override.to_aura_incentives_usd,
+                self.core_pool.override.to_bal_incentives_usd,
+            )
+
         aura_incentives = self.total_to_incentives_usd * self.chain.aura_vebal_share
         bal_incentives = self.total_to_incentives_usd * (
             1 - self.chain.aura_vebal_share
@@ -110,7 +116,6 @@ class CorePool(AbstractCorePool):
         )
 
     @property
-    # @return_zero_if_dust()
     def earned_bpt_fee_usd(self) -> Decimal:
         return self.bpt_price * self.earned_bpt_fee
 

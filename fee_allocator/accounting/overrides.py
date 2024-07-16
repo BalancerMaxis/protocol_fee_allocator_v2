@@ -44,7 +44,7 @@ class RethWethOverride(CorePoolOverride):
 
     @property
     def to_bal_incentives_usd(self) -> Decimal:
-        return self.core_pool.total_to_incentives_usd
+        return self.core_pool.redistributed.total_to_incentives_usd
 
 
 overrides = CorePoolOverrideMeta.overrides
