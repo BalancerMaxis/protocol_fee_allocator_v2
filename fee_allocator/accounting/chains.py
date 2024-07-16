@@ -72,15 +72,6 @@ class Chain(AbstractChain):
         return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
 
     @property
-    def total_earned_fees_redistributed_usd(self) -> Decimal:
-        return sum(
-            [
-                core_pool.redistributed.total_earned_fees_usd
-                for core_pool in self.core_pools
-            ]
-        )
-
-    @property
     def incentives_to_distribute_per_pool(self) -> Decimal:
         under_min_aura_pools = [
             pool

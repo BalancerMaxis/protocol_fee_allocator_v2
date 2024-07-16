@@ -38,10 +38,10 @@ class FeeAllocator:
         )
 
     def generate_bribe_csv(self):
-        logger.info("generating bribe csv")
         if not self.chains:
             self.chains = self._get_chain_data(self.input_fees, self.date_range)
 
+        logger.info("generating bribe csv")
         output = []
         for chain in self.chains.all_chains:
             for core_pool in chain.core_pools:
@@ -97,10 +97,10 @@ class FeeAllocator:
         return filename
 
     def generate_incentives_csv(self):
-        logger.info("generating incentives csv")
         if not self.chains:
             self.chains = self._get_chain_data(self.input_fees, self.date_range)
 
+        logger.info("generating incentives csv")
         output = []
         for chain in self.chains.all_chains:
             for core_pool in chain.core_pools:
@@ -200,7 +200,11 @@ class FeeAllocator:
         usdc.transfer("maxiKeepers/veBalFeeInjector", vebal_usdc_amount * 1e6)
         bal.transfer("maxiKeepers/veBalFeeInjector", vebal_bal_amount * 1e18)
 
-        builder.output_payload("fee_allocator/payloads/payload.json")
+        datetime_file_header = datetime.datetime.fromtimestamp(
+            self.date_range[1]
+        ).date()
+
+        builder.output_payload(f"fee_allocator/payloads/{datetime_file_header}.json")
 
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:

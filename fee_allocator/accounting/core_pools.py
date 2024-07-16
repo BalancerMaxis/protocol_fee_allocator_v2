@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 @dataclass
 class RedistributedIncentives:
     core_pool: CorePool
-    first_pass_buffer: Decimal = field(default=Decimal("0.75"))
+    first_pass_buffer: Decimal = field(default=Decimal("0.25"))
 
     @property
     def chain(self) -> Chain:
@@ -33,14 +33,10 @@ class RedistributedIncentives:
         return self.core_pool.total_earned_fees_usd
 
     @property
-    @return_zero_if_dust()
     def earned_fee_share_of_chain_usd(self) -> Decimal:
-        return (
-            self.total_earned_fees_usd / self.chain.total_earned_fees_redistributed_usd
-        )
+        return self.total_earned_fees_usd / self.chain.total_earned_fees_usd
 
     @property
-    @return_zero_if_dust(any_or_all="all")
     def total_to_incentives_usd(self) -> Decimal:
         to_distribute_to_incentives = self.chain.fees_collected * (
             1
@@ -49,52 +45,33 @@ class RedistributedIncentives:
         )
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
-    def _apply_threshold(self, threshold: Decimal) -> Decimal:
-        if self.total_to_incentives_usd < threshold:
-            return Decimal(0)
-        return self.total_to_incentives_usd
-
     @property
-    def redistributed_incentives(self) -> Decimal:
-        min_vote_incentive = self.chain.fee_config.min_vote_incentive_amount
-
-        first_pass = self._apply_threshold(
-            min_vote_incentive * (1 - self.first_pass_buffer)
+    def _base_incentives(self) -> Decimal:
+        aura_incentives = self.total_to_incentives_usd * self.chain.aura_vebal_share
+        bal_incentives = self.total_to_incentives_usd * (
+            1 - self.chain.aura_vebal_share
         )
-        second_pass = self._apply_threshold(min_vote_incentive)
 
-        return second_pass if second_pass > 0 else first_pass
+        if aura_incentives < self.chain.fee_config.min_aura_incentive:
+            bal_incentives += aura_incentives
+            aura_incentives = Decimal(0)
+
+        return aura_incentives, bal_incentives
 
     @property
     def to_aura_incentives_usd(self) -> Decimal:
-        if self.core_pool.override:
-            return self.core_pool.override.to_aura_incentives_usd
+        aura_incentives, bal_incentives = self._base_incentives
 
-        aura_incentives = self.core_pool.to_aura_incentives_usd
-        if (
-            self.redistributed_incentives == 0
-            or aura_incentives < self.chain.fee_config.min_aura_incentive
-        ):
+        if aura_incentives == 0:
             return Decimal(0)
 
         return aura_incentives + min(
-            self.chain.incentives_to_distribute_per_pool,
-            self.core_pool.to_bal_incentives_usd,
+            self.chain.incentives_to_distribute_per_pool, bal_incentives
         )
 
     @property
     def to_bal_incentives_usd(self) -> Decimal:
-        if self.core_pool.override:
-            return self.core_pool.override.to_bal_incentives_usd
-
-        bal_incentives = self.core_pool.to_bal_incentives_usd
-        if (
-            self.redistributed_incentives == 0
-            or self.core_pool.to_aura_incentives_usd
-            < self.chain.fee_config.min_aura_incentive
-        ):
-            return self.redistributed_incentives
-
+        _, bal_incentives = self._base_incentives
         return bal_incentives - min(
             self.chain.incentives_to_distribute_per_pool, bal_incentives
         )
@@ -118,11 +95,8 @@ class CorePool(AbstractCorePool):
         self.start_snap.tokens.sort(key=lambda x: x.address)
         self.end_snap.tokens.sort(key=lambda x: x.address)
         self.redistributed = RedistributedIncentives(self)
-        override_class = overrides.get(self.pool_id)
-        if override_class:
-            self.override = override_class(self)
-        else:
-            self.override = None
+        override_cls = overrides.get(self.pool_id)
+        self.override = override_cls(self) if override_cls else None
 
     @property
     def address(self) -> str:
@@ -136,7 +110,7 @@ class CorePool(AbstractCorePool):
         )
 
     @property
-    @return_zero_if_dust()
+    # @return_zero_if_dust()
     def earned_bpt_fee_usd(self) -> Decimal:
         return self.bpt_price * self.earned_bpt_fee
 
@@ -164,12 +138,10 @@ class CorePool(AbstractCorePool):
         return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
 
     @property
-    @return_zero_if_dust()
     def earned_fee_share_of_chain_usd(self) -> Decimal:
         return self.total_earned_fees_usd / self.chain.total_earned_fees_usd
 
     @property
-    @return_zero_if_dust(any_or_all="all")
     def total_to_incentives_usd(self) -> Decimal:
         to_distribute_to_incentives = self.chain.fees_collected * (
             1
@@ -179,17 +151,18 @@ class CorePool(AbstractCorePool):
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     @property
-    @return_zero_if_dust()
     def to_aura_incentives_usd(self) -> Decimal:
+        if self.override:
+            return self.override.to_aura_incentives_usd
         return self.total_to_incentives_usd * self.chain.aura_vebal_share
 
     @property
-    @return_zero_if_dust()
     def to_bal_incentives_usd(self) -> Decimal:
+        if self.override:
+            return self.override.to_bal_incentives_usd
         return self.total_to_incentives_usd * (1 - self.chain.aura_vebal_share)
 
     @property
-    @return_zero_if_dust()
     def to_dao_usd(self) -> Decimal:
         return (
             self.earned_fee_share_of_chain_usd
@@ -198,7 +171,6 @@ class CorePool(AbstractCorePool):
         )
 
     @property
-    @return_zero_if_dust()
     def to_vebal_usd(self) -> Decimal:
         return (
             self.earned_fee_share_of_chain_usd
