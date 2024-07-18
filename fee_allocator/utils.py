@@ -7,6 +7,8 @@ from web3 import Web3
 import os
 from dotenv import load_dotenv
 from fee_allocator.logger import logger
+import pandas as pd
+from pathlib import Path
 
 
 if TYPE_CHECKING:
@@ -93,3 +95,34 @@ def get_block_by_ts(timestamp, chain: "Chain", before=False):
         return int(data["result"])
     else:
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
+
+def compare_incentive_csvs(file1, file2):
+    """
+    calculates the diff between two fee allocator incentive csvs for `diff_columns`
+    """
+    df1 = pd.read_csv(file1, index_col=0)
+    df2 = pd.read_csv(file2, index_col=0)
+
+    common_index = df1.index.intersection(df2.index)
+    df1 = df1.loc[common_index]
+    df2 = df2.loc[common_index]
+
+    diff_columns = [
+        'earned_fees', 'fees_to_vebal', 'fees_to_dao', 'total_incentives',
+        'aura_incentives', 'bal_incentives', 'redirected_incentives'
+    ]
+
+    diff_df = df2[diff_columns] - df1[diff_columns]
+
+    diff_df['chain'] = df2['chain']
+    diff_df['symbol'] = df2['symbol']
+
+    column_order = ['chain', 'symbol'] + diff_columns
+    diff_df = diff_df[column_order]
+    
+    file1 = Path(file1).stem
+    file2 = Path(file2).stem
+
+    output_file = f"{file1}_{file2}_diff.csv"
+    diff_df.to_csv(output_file)
+    print(f"Results saved to {output_file}")

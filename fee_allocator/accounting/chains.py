@@ -72,20 +72,24 @@ class Chain(AbstractChain):
         return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
 
     @property
+    def total_earned_fees_over_min_usd(self) -> Decimal:
+        return sum([core_pool.redistributed.total_earned_fees_usd for core_pool in self.core_pools])
+
+    @property
     def incentives_to_distribute_per_pool(self) -> Decimal:
-        under_min_aura_pools = [
+        over_min_aura_pools = [
             pool
             for pool in self.core_pools
-            if pool.to_aura_incentives_usd < self.fee_config.min_aura_incentive
+            if pool.redistributed.base_aura_incentives > self.fee_config.min_aura_incentive
         ]
 
-        if not under_min_aura_pools:
+        if not over_min_aura_pools:
             return Decimal(0)
 
         debt_to_aura_market = sum(
-            [pool.to_aura_incentives_usd for pool in under_min_aura_pools]
+            [pool.redistributed.debt_to_aura_market for pool in self.core_pools]
         )
-        return debt_to_aura_market / len(under_min_aura_pools)
+        return debt_to_aura_market / len(over_min_aura_pools)
 
 
 class Chains:
