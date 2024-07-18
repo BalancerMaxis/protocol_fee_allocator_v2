@@ -41,12 +41,11 @@ def main() -> None:
     with open(input_fees_path) as f:
         input_fees = json.load(f)
 
-    fee_allocator = FeeAllocator(input_fees, (1720057514, 1721267114))
+    fee_allocator = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
     fee_allocator.generate_incentives_csv()
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_payload(file_name)
 
 
 if __name__ == "__main__":
-    compare_incentive_csvs("old2.csv", "fee_allocator/allocations/incentives/2024-07-17.csv")
-    # main()
+    main()
