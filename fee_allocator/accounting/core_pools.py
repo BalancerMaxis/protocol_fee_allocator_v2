@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from web3 import Web3
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict, TYPE_CHECKING, Tuple
 from decimal import Decimal
 import datetime
 
@@ -16,71 +16,89 @@ if TYPE_CHECKING:
 
 @dataclass
 class RedistributedIncentives:
-    core_pool: CorePool
+    core_pool: "CorePool"
     first_pass_buffer: Decimal = field(default=Decimal("0.25"))
 
     @property
-    def chain(self) -> Chain:
+    def chain(self) -> "Chain":
         return self.core_pool.chain
 
     @property
     def total_earned_fees_usd(self) -> Decimal:
-        if self.core_pool.total_to_incentives_usd < self.chain.fee_config.min_vote_incentive_amount:
-            return Decimal(0)
-        return self.core_pool.total_earned_fees_usd
+        return (
+            Decimal(0)
+            if self.core_pool.total_to_incentives_usd
+            < self.chain.fee_config.min_vote_incentive_amount
+            else self.core_pool.total_earned_fees_usd
+        )
 
     @property
     def earned_fee_share_of_chain_usd(self) -> Decimal:
         return self.total_earned_fees_usd / self.chain.total_earned_fees_over_min_usd
 
     @property
-    def total_to_incentives_usd(self) -> Decimal:
-        to_distribute_to_incentives = self.chain.fees_collected * (
-            1
-            - self.chain.fee_config.dao_share_pct
-            - self.chain.fee_config.vebal_share_pct
-        )
-        return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
+    def base_incentives(self) -> Tuple[Decimal, Decimal]:
+        if (
+            self.core_pool.total_to_incentives_usd
+            > self.chain.fee_config.min_vote_incentive_amount
+        ):
+            aura_incentives = self.core_pool.to_aura_incentives_usd + (
+                self.chain.incentives_to_distribute_aura
+                * self.earned_fee_share_of_chain_usd
+            )
+            bal_incentives = self.core_pool.to_bal_incentives_usd + (
+                self.chain.incentives_to_distribute_bal
+                * self.earned_fee_share_of_chain_usd
+            )
+        else:
+            aura_incentives, bal_incentives = Decimal(0), Decimal(0)
 
-    @property
-    def base_aura_incentives(self) -> Decimal:
         if self.core_pool.override:
-            return self.core_pool.override.to_aura_incentives_usd
-        return self.total_to_incentives_usd * self.chain.aura_vebal_share
+            override_aura_to_bal = self.core_pool.override.voting_pool == "bal"
+        else:
+            override_aura_to_bal = False
 
-    @property
-    def base_bal_incentives(self) -> Decimal:
-        if self.core_pool.override:
-            return self.core_pool.override.to_bal_incentives_usd
-        return self.total_to_incentives_usd * (1 - self.chain.aura_vebal_share)
+        if (
+            aura_incentives
+            < self.chain.fee_config.min_aura_incentive * (1 - self.first_pass_buffer)
+            or override_aura_to_bal
+        ):
+            bal_incentives += aura_incentives
+            aura_incentives = Decimal(0)
+
+        return aura_incentives, bal_incentives
 
     @property
     def debt_to_aura_market(self) -> Decimal:
-        if self.base_aura_incentives < self.chain.fee_config.min_aura_incentive * (1 - self.first_pass_buffer):
-            return self.base_aura_incentives
-        return Decimal(0)
+        aura_incentives, _ = self.base_incentives
+        return (
+            aura_incentives
+            if aura_incentives
+            < self.chain.fee_config.min_aura_incentive * (1 - self.first_pass_buffer)
+            else Decimal(0)
+        )
 
     @property
     def to_aura_incentives_usd(self) -> Decimal:
-        aura_incentives = self.base_aura_incentives
-
-        if aura_incentives < self.chain.fee_config.min_aura_incentive * (1 - self.first_pass_buffer):
-            return Decimal(0)
-
-        return aura_incentives + min(
-            self.chain.incentives_to_distribute_per_pool, self.base_bal_incentives
-        )
+        aura_incentives, bal_incentives = self.base_incentives
+        if aura_incentives > self.chain.fee_config.min_aura_incentive * (
+            1 - self.first_pass_buffer
+        ):
+            return aura_incentives + min(
+                self.chain.incentives_to_distribute_per_pool_aura, bal_incentives
+            )
+        return aura_incentives
 
     @property
     def to_bal_incentives_usd(self) -> Decimal:
-        bal_incentives = self.base_bal_incentives
-        
-        if self.base_aura_incentives < self.chain.fee_config.min_aura_incentive * (1 - self.first_pass_buffer):
-            return bal_incentives + self.base_aura_incentives
-
-        return bal_incentives - min(
-            self.chain.incentives_to_distribute_per_pool, bal_incentives
-        )
+        aura_incentives, bal_incentives = self.base_incentives
+        if aura_incentives > self.chain.fee_config.min_aura_incentive * (
+            1 - self.first_pass_buffer
+        ):
+            return bal_incentives - min(
+                self.chain.incentives_to_distribute_per_pool_aura, bal_incentives
+            )
+        return bal_incentives
 
 
 @dataclass

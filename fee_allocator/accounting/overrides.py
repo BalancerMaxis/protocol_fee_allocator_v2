@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod, ABCMeta
 from decimal import Decimal
 from typing import Dict, Type, TYPE_CHECKING
+from fee_allocator.constants import POOL_OVERRIDES_URL
+import requests
 
 if TYPE_CHECKING:
     from fee_allocator.accounting.core_pools import CorePool
+
+overrides_data = requests.get(POOL_OVERRIDES_URL).json()
 
 
 class CorePoolOverrideMeta(ABCMeta):
@@ -20,6 +24,8 @@ class CorePoolOverrideMeta(ABCMeta):
 
 class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
     POOL_ID: str = None
+    voting_pool: str = None
+    market: str = None
 
     def __init__(self, core_pool: "CorePool"):
         self.core_pool = core_pool
@@ -37,14 +43,24 @@ class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
 
 class RethWethOverride(CorePoolOverride):
     pool_id = "0x1e19cf2d73a72ef1332c882f20534b6519be0276000200000000000000000112"
+    voting_pool = overrides_data.get(pool_id).get("voting_pool_override")
+    market = overrides_data.get(pool_id).get("market_override")
 
     @property
     def to_aura_incentives_usd(self) -> Decimal:
-        return Decimal(0)
+        return (
+            self.core_pool.redistributed.base_incentives[0]
+            if self.market == "aura"
+            else Decimal
+        )
 
     @property
     def to_bal_incentives_usd(self) -> Decimal:
-        return self.core_pool.redistributed.total_to_incentives_usd
+        return (
+            self.core_pool.redistributed.base_incentives[1]
+            if self.market == "bal"
+            else Decimal
+        )
 
 
 overrides = CorePoolOverrideMeta.overrides

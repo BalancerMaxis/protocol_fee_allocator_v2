@@ -117,7 +117,9 @@ class FeeAllocator:
                         "total_incentives": core_pool.total_to_incentives_usd,
                         "aura_incentives": core_pool.redistributed.to_aura_incentives_usd,
                         "bal_incentives": core_pool.redistributed.to_bal_incentives_usd,
-                        "redirected_incentives": core_pool.redistributed.total_to_incentives_usd
+                        "redirected_incentives": sum(
+                            core_pool.redistributed.base_incentives
+                        )
                         - core_pool.total_to_incentives_usd,
                         "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
@@ -129,8 +131,9 @@ class FeeAllocator:
             self.date_range[1]
         ).date()
         filename = f"fee_allocator/allocations/incentives/{datetime_file_header}.csv"
+        sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
 
-        df.to_csv(
+        sorted_df.to_csv(
             os.path.join(
                 PROJECT_ROOT,
                 filename,
