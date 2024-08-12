@@ -14,7 +14,7 @@ from bal_tools.subgraph import DateRange
 from bal_tools.models import PoolSnapshot, Pool
 from bal_addresses import AddrBook
 
-from fee_allocator.accounting.core_pools import CorePool
+from fee_allocator.accounting.core_pools import CorePool, CorePoolData
 from fee_allocator.accounting.interfaces import AbstractChain
 from fee_allocator.accounting.models import FeeConfig, RawCorePoolData, RerouteConfig
 from fee_allocator.constants import (
@@ -25,10 +25,6 @@ from fee_allocator.constants import (
 from fee_allocator.accounting.decorators import round
 from fee_allocator.logger import logger
 from fee_allocator.utils import get_block_by_ts
-
-
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
 
 load_dotenv()
 
@@ -42,12 +38,14 @@ class Chain(AbstractChain):
     subgraph: Subgraph = field(default_factory=Subgraph)
     bal_pools_gauges: BalPoolsGauges = field(default_factory=BalPoolsGauges)
     aura_vebal_share: Decimal = field(default_factory=Decimal)
+    core_pool_data: list[CorePoolData] = field(default_factory=list)
     core_pools: List[CorePool] = field(default_factory=list)
     web3: Web3 = field(default=None, init=False)
 
     block_range: DateRange = None
     date_range: DateRange = None
     fee_config: FeeConfig = None
+    _total_earned_fees_usd: Decimal = None
 
     def __post_init__(self):
         try:
@@ -55,11 +53,12 @@ class Chain(AbstractChain):
         except KeyError:
             raise ValueError(f"chain id for {self.name} not found in `AddrBook`")
 
+        self._initialize_web3()
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
         self.bal_pools_gauges = BalPoolsGauges(self.name)
 
-    def initialize_web3(self) -> None:
+    def _initialize_web3(self) -> None:
         rpc_url = os.environ.get(f"{self.name.upper()}NODEURL")
         if not rpc_url:
             raise ValueError(
@@ -69,61 +68,26 @@ class Chain(AbstractChain):
 
     @property
     def total_earned_fees_usd(self) -> Decimal:
+        if self._total_earned_fees_usd is None:
+            self._total_earned_fees_usd = self._calculate_total_earned_fees_usd()
+        return self._total_earned_fees_usd
+
+    def _calculate_total_earned_fees_usd(self) -> Decimal:
         return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
 
-    @property
-    def total_earned_fees_over_min_usd(self) -> Decimal:
-        return sum(
-            [
-                core_pool.redistributed.total_earned_fees_usd
-                for core_pool in self.core_pools
-            ]
-        )
-
-    @property
-    def incentives_to_distribute_aura(self) -> Decimal:
-        return sum(
-            [
-                core_pool.to_aura_incentives_usd
-                for core_pool in self.core_pools
-                if core_pool.total_to_incentives_usd
-                < self.fee_config.min_vote_incentive_amount
-            ]
-        )
-
-    @property
-    def incentives_to_distribute_bal(self) -> Decimal:
-        return sum(
-            [
-                core_pool.to_bal_incentives_usd
-                for core_pool in self.core_pools
-                if core_pool.total_to_incentives_usd
-                < self.fee_config.min_vote_incentive_amount
-            ]
-        )
-
-    @property
-    def incentives_to_distribute_per_pool_aura(self) -> Decimal:
-        over_min_aura_pools = [
-            pool
-            for pool in self.core_pools
-            if pool.redistributed.base_incentives[0]
-            > self.fee_config.min_aura_incentive
-            * (1 - pool.redistributed.first_pass_buffer)
-        ]
-
-        if len(over_min_aura_pools) == 0:
-            return Decimal(0)
-
-        debt_to_aura_market = sum(
-            [pool.redistributed.debt_to_aura_market for pool in self.core_pools]
-        )
-        return debt_to_aura_market / len(over_min_aura_pools)
+    def update_core_pools(self):
+        total_earned_fees = self.total_earned_fees_usd
+        for core_pool in self.core_pools:
+            core_pool.update_chain_dependent_values(total_earned_fees)
 
 
 class Chains:
     def __init__(
-        self, chain_list: list[Chain], date_range: DateRange, use_cache: bool = True
+        self,
+        chain_list: list[Chain],
+        date_range: DateRange,
+        cache_dir: Path = None,
+        use_cache: bool = True,
     ):
         self._chains = {chain.name: chain for chain in chain_list}
         self.date_range = date_range
@@ -131,9 +95,13 @@ class Chains:
         self.raw_core_pools = RawCorePoolData(**requests.get(CORE_POOLS_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
 
+        self.cache_dir = cache_dir if cache_dir else Path(__file__).parent / "cache"
+        self.cache_dir.mkdir(exist_ok=True)
+
         self._set_block_range()
         self._set_aura_vebal_share()
         self._init_core_pools(use_cache)
+        self._update_core_pools()
 
     def __getattr__(self, name):
         try:
@@ -143,19 +111,17 @@ class Chains:
 
     def _cache_file_path(self, chain: Chain) -> Path:
         filename = f"{chain.name}_{self.date_range[0]}_{self.date_range[1]}.joblib"
-        return CACHE_DIR / filename
+        return self.cache_dir / filename
 
     def _load_core_pools_from_cache(self, chain: Chain) -> None:
         logger.info(f"loading core pools from cache for {chain.name}")
-        core_pools: List[CorePool] = joblib.load(self._cache_file_path(chain))
-        chain.core_pools = core_pools
-        chain.initialize_web3()
+        core_pools_data: List[CorePoolData] = joblib.load(self._cache_file_path(chain))
+        chain.core_pools = [CorePool(data, chain) for data in core_pools_data]
 
     def _save_core_pools_to_cache(self, chain: Chain) -> None:
-        # web3 instance cant be pickled
-        chain.web3 = None
-        joblib.dump(chain.core_pools, self._cache_file_path(chain))
-        chain.initialize_web3()
+        joblib.dump(
+            [pool for pool in chain.core_pool_data], self._cache_file_path(chain)
+        )
 
     def _init_core_pools(self, use_cache: bool) -> None:
         for chain in self._chains.values():
@@ -167,10 +133,12 @@ class Chains:
             else:
                 self._process_core_pools(chain)
                 self._save_core_pools_to_cache(chain)
+                chain.core_pools = [
+                    CorePool(data, chain) for data in chain.core_pool_data
+                ]
 
     def _process_core_pools(self, chain: Chain) -> None:
         logger.info(f"getting snapshots for {chain.name}")
-        chain.initialize_web3()
 
         start_snaps = chain.subgraph.get_balancer_pool_snapshots(
             block=chain.block_range[0], pools_per_req=1000, limit=5000
@@ -220,9 +188,8 @@ class Chains:
                 pool_id, chain.name, self.date_range, chain.web3, chain.block_range[1]
             )
 
-            chain.core_pools.append(
-                CorePool(
-                    chain=chain,
+            chain.core_pool_data.append(
+                CorePoolData(
                     pool_id=pool_id,
                     label=label,
                     bpt_price=prices.bpt_price,
@@ -238,9 +205,6 @@ class Chains:
     def _set_aura_vebal_share(self) -> Decimal:
         if not self.mainnet:
             raise ValueError("mainnet is needed to calculate aura vebal share")
-
-        if not self.mainnet.web3:
-            self.mainnet.initialize_web3()
 
         vebal_share = self.mainnet.subgraph.calculate_aura_vebal_share(
             self.mainnet.web3, self.mainnet.block_range[1]
@@ -268,6 +232,10 @@ class Chains:
             ),
             None,
         )
+
+    def _update_core_pools(self):
+        for chain in self._chains.values():
+            chain.update_core_pools()
 
     @property
     def all_chains(self) -> List[Chain]:

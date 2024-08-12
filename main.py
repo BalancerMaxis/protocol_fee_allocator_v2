@@ -42,6 +42,7 @@ def main() -> None:
         input_fees = json.load(f)
 
     fee_allocator = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
+    fee_allocator.redistribute_fees()
     fee_allocator.generate_incentives_csv()
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_payload(file_name)

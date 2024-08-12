@@ -49,17 +49,15 @@ class RethWethOverride(CorePoolOverride):
     @property
     def to_aura_incentives_usd(self) -> Decimal:
         return (
-            self.core_pool.redistributed.base_incentives[0]
+            self.core_pool.to_aura_incentives_usd
             if self.market == "aura"
-            else Decimal
+            else Decimal(0)
         )
 
     @property
     def to_bal_incentives_usd(self) -> Decimal:
         return (
-            self.core_pool.redistributed.base_incentives[1]
-            if self.market == "bal"
-            else Decimal
+            self.core_pool.to_bal_incentives_usd if self.market == "bal" else Decimal(0)
         )
 
 
