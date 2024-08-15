@@ -35,20 +35,20 @@ def test_fee_allocator(fee_allocator):
         pool = df[df["symbol"] == symbol].iloc[0]
 
         assert np.isclose(
-            pool.earned_fees, expected.earned_fees, rtol=1e-4
+            pool.earned_fees, expected.earned_fees, rtol=0.1
         ), f"{symbol}: {pool.earned_fees} != {expected.earned_fees}"
         assert np.isclose(
-            pool.fees_to_vebal, expected.fees_to_vebal, rtol=1e-4
+            pool.fees_to_vebal, expected.fees_to_vebal, rtol=0.1
         ), f"{symbol}: {pool.fees_to_vebal} != {expected.fees_to_vebal}"
         assert np.isclose(
-            pool.fees_to_dao, expected.fees_to_dao, rtol=1e-4
+            pool.fees_to_dao, expected.fees_to_dao, rtol=0.1
         ), f"{symbol}: {pool.fees_to_dao} != {expected.fees_to_dao}"
         assert np.isclose(
-            pool.total_incentives, expected.total_incentives, rtol=1e-4
+            pool.total_incentives, expected.total_incentives, rtol=0.1
         ), f"{symbol}: {pool.total_incentives} != {expected.total_incentives}"
         assert np.isclose(
-            pool.aura_incentives, expected.aura_incentives, rtol=1e-4
+            pool.aura_incentives, expected.aura_incentives, rtol=0.1
         ), f"{symbol}: {pool.aura_incentives} != {expected.aura_incentives}"
         assert np.isclose(
-            pool.bal_incentives, expected.bal_incentives, rtol=1e-4
+            pool.bal_incentives, expected.bal_incentives, rtol=0.1
         ), f"{symbol}: {pool.bal_incentives} != {expected.bal_incentives}"

@@ -241,7 +241,7 @@ class FeeAllocator:
 
         return output_path
 
-    def generate_payload(
+    def generate_bribe_payload(
         self, input_csv: str, output_path: Path = Path("fee_allocator/payloads")
     ) -> Path:
         """

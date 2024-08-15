@@ -16,7 +16,7 @@ from bal_addresses import AddrBook
 
 from fee_allocator.accounting.core_pools import CorePool, CorePoolData
 from fee_allocator.accounting.interfaces import AbstractChain
-from fee_allocator.accounting.models import FeeConfig, RawCorePoolData, RerouteConfig
+from fee_allocator.accounting.models import FeeConfig, RawCorePoolData, RerouteConfig, RawPools
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
     CORE_POOLS_URL,
@@ -27,7 +27,6 @@ from fee_allocator.logger import logger
 from fee_allocator.utils import get_block_by_ts
 
 load_dotenv()
-
 
 @dataclass
 class Chain(AbstractChain):
@@ -66,20 +65,87 @@ class Chain(AbstractChain):
             )
         self.web3 = Web3(Web3.HTTPProvider(rpc_url))
 
+    def init_core_pool_data(self, raw_core_pools: RawPools):
+        logger.info(f"getting snapshots for {self.name}")
+
+        start_snaps = self.subgraph.get_balancer_pool_snapshots(
+            block=self.block_range[0], pools_per_req=1000, limit=5000
+        )
+        end_snaps = self.subgraph.get_balancer_pool_snapshots(
+            block=self.block_range[1], pools_per_req=1000, limit=5000
+        )
+        pools = self.subgraph.fetch_all_pools_info()
+
+        pool_to_gauge = {}
+        for pool in pools:
+            if pool.gauge.isKilled:
+                logger.info(f"{pool.id} gauge:{pool.gauge.address} is killed, skipping")
+                continue
+            pool_to_gauge[pool.id] = Web3.to_checksum_address(pool.gauge.address)
+
+        for pool_id, label in raw_core_pools.items():
+            if self._should_add_core_pool(pool_id, start_snaps):
+                self._add_core_pool_data(
+                    pool_id, label, pool_to_gauge, start_snaps, end_snaps
+                )
+
+    def _should_add_core_pool(
+        self, pool_id: str, start_snaps: list[PoolSnapshot]
+    ) -> bool:
+        snapshot_ids = [snapshot.id for snapshot in start_snaps]
+        return (
+            pool_id in snapshot_ids
+            and self.bal_pools_gauges.has_alive_preferential_gauge(pool_id)
+        )
+
+    def _add_core_pool_data(
+        self,
+        pool_id: str,
+        label: str,
+        pool_to_gauge: Dict[str, str],
+        start_snaps: list[PoolSnapshot],
+        end_snaps: list[PoolSnapshot],
+    ) -> None:
+        start_snap = self._get_latest_snapshot(start_snaps, pool_id)
+        end_snap = self._get_latest_snapshot(end_snaps, pool_id)
+
+        if start_snap and end_snap:
+            logger.info(f"fetching twap prices for {label} on {self.name}")
+            prices = self.subgraph.get_twap_price_pool(
+                pool_id, self.name, self.date_range, self.web3, self.block_range[1]
+            )
+
+            self.core_pool_data.append(
+                CorePoolData(
+                    pool_id=pool_id,
+                    label=label,
+                    bpt_price=prices.bpt_price,
+                    tokens_price=prices.token_prices,
+                    gauge_address=pool_to_gauge[pool_id],
+                    start_snap=start_snap,
+                    end_snap=end_snap,
+                    last_join_exit_ts=self.bal_pools_gauges.get_last_join_exit(pool_id)
+                )
+            )
+        else:
+            logger.warning(f"No snapshots found for {label} - {pool_id}")
+
     @property
     def total_earned_fees_usd(self) -> Decimal:
-        if self._total_earned_fees_usd is None:
-            self._total_earned_fees_usd = self._calculate_total_earned_fees_usd()
-        return self._total_earned_fees_usd
+        return sum([pool_data.total_earned_fees_usd for pool_data in self.core_pool_data])
 
-    def _calculate_total_earned_fees_usd(self) -> Decimal:
-        return sum([core_pool.total_earned_fees_usd for core_pool in self.core_pools])
-
-    def update_core_pools(self):
-        total_earned_fees = self.total_earned_fees_usd
-        for core_pool in self.core_pools:
-            core_pool.update_chain_dependent_values(total_earned_fees)
-
+    @staticmethod
+    def _get_latest_snapshot(
+        snapshots: list[PoolSnapshot], pool_id: str
+    ) -> PoolSnapshot:
+        return next(
+            (
+                snap
+                for snap in sorted(snapshots, key=lambda x: x.timestamp, reverse=True)
+                if snap.id == pool_id
+            ),
+            None,
+        )
 
 class Chains:
     def __init__(
@@ -91,8 +157,8 @@ class Chains:
     ):
         self._chains = {chain.name: chain for chain in chain_list}
         self.date_range = date_range
-        self.fee_config = FeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.raw_core_pools = RawCorePoolData(**requests.get(CORE_POOLS_URL).json())
+        self.fee_config = FeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
 
         self.cache_dir = cache_dir if cache_dir else Path(__file__).parent / "cache"
@@ -101,7 +167,6 @@ class Chains:
         self._set_block_range()
         self._set_aura_vebal_share()
         self._init_core_pools(use_cache)
-        self._update_core_pools()
 
     def __getattr__(self, name):
         try:
@@ -115,12 +180,11 @@ class Chains:
 
     def _load_core_pools_from_cache(self, chain: Chain) -> None:
         logger.info(f"loading core pools from cache for {chain.name}")
-        core_pools_data: List[CorePoolData] = joblib.load(self._cache_file_path(chain))
-        chain.core_pools = [CorePool(data, chain) for data in core_pools_data]
+        chain.core_pool_data = joblib.load(self._cache_file_path(chain))
 
     def _save_core_pools_to_cache(self, chain: Chain) -> None:
         joblib.dump(
-            [pool for pool in chain.core_pool_data], self._cache_file_path(chain)
+            chain.core_pool_data, self._cache_file_path(chain)
         )
 
     def _init_core_pools(self, use_cache: bool) -> None:
@@ -131,76 +195,10 @@ class Chains:
             if use_cache and self._cache_file_path(chain).exists():
                 self._load_core_pools_from_cache(chain)
             else:
-                self._process_core_pools(chain)
+                chain.init_core_pool_data(self.raw_core_pools[chain.name])
                 self._save_core_pools_to_cache(chain)
-                chain.core_pools = [
-                    CorePool(data, chain) for data in chain.core_pool_data
-                ]
 
-    def _process_core_pools(self, chain: Chain) -> None:
-        logger.info(f"getting snapshots for {chain.name}")
-
-        start_snaps = chain.subgraph.get_balancer_pool_snapshots(
-            block=chain.block_range[0], pools_per_req=1000, limit=5000
-        )
-        end_snaps = chain.subgraph.get_balancer_pool_snapshots(
-            block=chain.block_range[1], pools_per_req=1000, limit=5000
-        )
-        pools = chain.subgraph.fetch_all_pools_info()
-
-        pool_to_gauge = {}
-        for pool in pools:
-            if pool.gauge.isKilled:
-                logger.info(f"{pool.id} gauge:{pool.gauge.address} is killed, skipping")
-                continue
-            pool_to_gauge[pool.id] = Web3.to_checksum_address(pool.gauge.address)
-
-        for pool_id, label in self.raw_core_pools[chain.name].items():
-            if self._should_add_core_pool(chain, pool_id, start_snaps):
-                self._add_core_pool(
-                    chain, pool_id, label, pool_to_gauge, start_snaps, end_snaps
-                )
-
-    def _should_add_core_pool(
-        self, chain: Chain, pool_id: str, start_snaps: list[PoolSnapshot]
-    ) -> bool:
-        snapshot_ids = [snapshot.id for snapshot in start_snaps]
-        return (
-            pool_id in snapshot_ids
-            and chain.bal_pools_gauges.has_alive_preferential_gauge(pool_id)
-        )
-
-    def _add_core_pool(
-        self,
-        chain: Chain,
-        pool_id: str,
-        label: str,
-        pool_to_gauge: Dict[str, str],
-        start_snaps: list[PoolSnapshot],
-        end_snaps: list[PoolSnapshot],
-    ) -> None:
-        start_snap = self._get_latest_snapshot(start_snaps, pool_id)
-        end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-
-        if start_snap and end_snap:
-            logger.info(f"fetching twap prices for {label} on {chain.name}")
-            prices = chain.subgraph.get_twap_price_pool(
-                pool_id, chain.name, self.date_range, chain.web3, chain.block_range[1]
-            )
-
-            chain.core_pool_data.append(
-                CorePoolData(
-                    pool_id=pool_id,
-                    label=label,
-                    bpt_price=prices.bpt_price,
-                    tokens_price=prices.token_prices,
-                    gauge_address=pool_to_gauge[pool_id],
-                    start_snap=start_snap,
-                    end_snap=end_snap,
-                )
-            )
-        else:
-            logger.warning(f"No snapshots found for {label} - {pool_id}")
+            chain.core_pools = [CorePool(data, chain) for data in chain.core_pool_data]
 
     def _set_aura_vebal_share(self) -> Decimal:
         if not self.mainnet:
@@ -219,23 +217,6 @@ class Chains:
 
             chain.block_range = (start_block, end_block)
             logger.info(f"set blocks for {chain.name}: {start_block} - {end_block}")
-
-    @staticmethod
-    def _get_latest_snapshot(
-        snapshots: list[PoolSnapshot], pool_id: str
-    ) -> PoolSnapshot:
-        return next(
-            (
-                snap
-                for snap in sorted(snapshots, key=lambda x: x.timestamp, reverse=True)
-                if snap.id == pool_id
-            ),
-            None,
-        )
-
-    def _update_core_pools(self):
-        for chain in self._chains.values():
-            chain.update_core_pools()
 
     @property
     def all_chains(self) -> List[Chain]:

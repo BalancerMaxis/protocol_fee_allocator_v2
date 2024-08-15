@@ -4,6 +4,7 @@ from typing import Dict, NewType
 
 PoolId = NewType("PoolId", str)
 Label = NewType("Label", str)
+RawPools = Dict[PoolId, Label]
 
 
 class FeeConfig(BaseModel):
@@ -14,17 +15,16 @@ class FeeConfig(BaseModel):
     dao_share_pct: Decimal
     vote_incentive_pct: Decimal
 
-
 class RawCorePoolData(BaseModel):
-    mainnet: Dict[PoolId, Label]
-    polygon: Dict[PoolId, Label]
-    arbitrum: Dict[PoolId, Label]
-    gnosis: Dict[PoolId, Label]
-    zkevm: Dict[PoolId, Label]
-    avalanche: Dict[PoolId, Label]
-    base: Dict[PoolId, Label]
+    mainnet: RawPools
+    polygon: RawPools
+    arbitrum: RawPools
+    gnosis: RawPools
+    zkevm: RawPools
+    avalanche: RawPools
+    base: RawPools
 
-    def __getitem__(self, chain: str) -> Dict[PoolId, Label]:
+    def __getitem__(self, chain: str) -> RawPools:
         try:
             return getattr(self, chain)
         except AttributeError:
