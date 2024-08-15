@@ -51,49 +51,32 @@ class FeeAllocator:
 
     def redistribute_fees(self):
         for chain in self.chains.all_chains:
-            pools_to_redistribute = [
-                pool
-                for pool in chain.core_pools
-                if pool.total_to_incentives_usd
-                < chain.fee_config.min_vote_incentive_amount
-            ]
-            pools_to_receive = [
-                pool
-                for pool in chain.core_pools
-                if pool.total_to_incentives_usd
-                > chain.fee_config.min_vote_incentive_amount
-            ]
+            min_amount = chain.fee_config.min_vote_incentive_amount
+            pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
+            pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
+            
+            if not pools_to_receive:
+                continue
 
-            for pool_to_redist in pools_to_redistribute:
-                total_to_incentives = pool_to_redist.total_to_incentives_usd
-                to_aura_incentives = pool_to_redist.to_aura_incentives_usd
-                to_bal_incentives = pool_to_redist.to_bal_incentives_usd
+            total_fees = sum(p.total_earned_fees_usd for p in pools_to_receive)
+            weights = {p.pool_id: p.total_earned_fees_usd / total_fees for p in pools_to_receive}
 
-                pool_to_redist.total_to_incentives_usd = Decimal(0)
-                pool_to_redist.to_aura_incentives_usd = Decimal(0)
-                pool_to_redist.to_bal_incentives_usd = Decimal(0)
-                pool_to_redist.redirected_incentives_usd -= total_to_incentives
+            for pool in pools_to_redistribute:
+                total = pool.total_to_incentives_usd
+                aura = pool.to_aura_incentives_usd
+                bal = pool.to_bal_incentives_usd
 
-                pool_weights = {
-                    pool.pool_id: pool.total_earned_fees_usd
-                    / sum([pool.total_earned_fees_usd for pool in pools_to_receive])
-                    for pool in pools_to_receive
-                }
+                pool.total_to_incentives_usd = Decimal(0)
+                pool.to_aura_incentives_usd = Decimal(0)
+                pool.to_bal_incentives_usd = Decimal(0)
+                pool.redirected_incentives_usd -= total
 
-                for pool_to_receive in pools_to_receive:
-                    pool_weight = pool_weights[pool_to_receive.pool_id]
-                    pool_to_receive.total_to_incentives_usd += (
-                        total_to_incentives * pool_weight
-                    )
-                    pool_to_receive.to_aura_incentives_usd += (
-                        to_aura_incentives * pool_weight
-                    )
-                    pool_to_receive.to_bal_incentives_usd += (
-                        to_bal_incentives * pool_weight
-                    )
-                    pool_to_receive.redirected_incentives_usd += (
-                        total_to_incentives * pool_weight
-                    )
+                for receiving_pool in pools_to_receive:
+                    weight = weights[receiving_pool.pool_id]
+                    receiving_pool.total_to_incentives_usd += total * weight
+                    receiving_pool.to_aura_incentives_usd += aura * weight
+                    receiving_pool.to_bal_incentives_usd += bal * weight
+                    receiving_pool.redirected_incentives_usd += total * weight
 
         self.handle_aura_min(buffer=0.25)
         self.handle_aura_min()
@@ -101,41 +84,33 @@ class FeeAllocator:
     def handle_aura_min(self, buffer=0):
         for chain in self.chains.all_chains:
             min_aura_incentive = chain.fee_config.min_aura_incentive * (1 - buffer)
-            debt_to_aura_market = Decimal(0)
-            for core_pool in chain.core_pools:
-                override_aura_to_bal = (
-                    core_pool.override and core_pool.override.voting_pool == "bal"
-                )
-                if (
-                    core_pool.to_aura_incentives_usd < min_aura_incentive
-                    or override_aura_to_bal
-                ):
-                    to_redistribute = core_pool.to_aura_incentives_usd
-                    core_pool.to_aura_incentives_usd = Decimal(0)
-                    core_pool.to_bal_incentives_usd += to_redistribute
-                    debt_to_aura_market += to_redistribute
+            debt_to_aura = Decimal(0)
 
-            if debt_to_aura_market:
-                debt_repaid = Decimal(0)
-                pools_over_aura_min = [
-                    pool
-                    for pool in chain.core_pools
-                    if pool.to_aura_incentives_usd >= min_aura_incentive
-                ]
-                if pools_over_aura_min:
-                    amount_per_pool = debt_to_aura_market / len(pools_over_aura_min)
-                    for pool in pools_over_aura_min:
-                        amount_to_dist = min(
-                            amount_per_pool, pool.to_bal_incentives_usd
-                        )
-                        pool.to_aura_incentives_usd += amount_to_dist
-                        pool.to_bal_incentives_usd -= amount_to_dist
-                        debt_repaid += amount_to_dist
+            for pool in chain.core_pools:
+                if pool.to_aura_incentives_usd < min_aura_incentive or (pool.override and pool.override.voting_pool == "bal"):
+                    debt_to_aura += pool.to_aura_incentives_usd
+                    pool.to_bal_incentives_usd += pool.to_aura_incentives_usd
+                    pool.to_aura_incentives_usd = Decimal(0)
+            
+            if not debt_to_aura:
+                continue
 
-                        if debt_to_aura_market - debt_repaid >= 0:
-                            print(
-                                f"{pool.pool_id}  remaining debt to aura market: {debt_to_aura_market}, Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura_market - debt_repaid}"
-                            )
+            pools_over_min = [p for p in chain.core_pools if p.to_aura_incentives_usd >= min_aura_incentive]
+            if not pools_over_min:
+                continue
+
+            amount_per_pool = debt_to_aura / len(pools_over_min)
+            debt_repaid = Decimal(0)
+
+            for pool in pools_over_min:
+                amount = min(amount_per_pool, pool.to_bal_incentives_usd)
+                pool.to_aura_incentives_usd += amount
+                pool.to_bal_incentives_usd -= amount
+                debt_repaid += amount
+
+                if debt_to_aura - debt_repaid >= 0:
+                    print(f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
+                          f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}")
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")
