@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-import os
 from typing import List, Dict
 from decimal import Decimal
 from pathlib import Path
@@ -8,15 +7,19 @@ from pathlib import Path
 from web3 import Web3
 import requests
 from bal_tools import Subgraph, BalPoolsGauges
-from dotenv import load_dotenv
 import joblib
 from bal_tools.subgraph import DateRange
-from bal_tools.models import PoolSnapshot, Pool
+from bal_tools.models import PoolSnapshot
 from bal_addresses import AddrBook
 
 from fee_allocator.accounting.core_pools import CorePool, CorePoolData
 from fee_allocator.accounting.interfaces import AbstractChain
-from fee_allocator.accounting.models import FeeConfig, RawCorePoolData, RerouteConfig, RawPools
+from fee_allocator.accounting.models import (
+    FeeConfig,
+    RawCorePoolData,
+    RerouteConfig,
+    RawPools,
+)
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
     CORE_POOLS_URL,
@@ -26,24 +29,23 @@ from fee_allocator.accounting.decorators import round
 from fee_allocator.logger import logger
 from fee_allocator.utils import get_block_by_ts
 
-load_dotenv()
 
 @dataclass
 class Chain(AbstractChain):
     name: str
     fees_collected: Decimal
-    chain_id: int
+    date_range: DateRange
+    web3: Web3
 
     subgraph: Subgraph = field(default_factory=Subgraph)
     bal_pools_gauges: BalPoolsGauges = field(default_factory=BalPoolsGauges)
     aura_vebal_share: Decimal = field(default_factory=Decimal)
     core_pool_data: list[CorePoolData] = field(default_factory=list)
     core_pools: List[CorePool] = field(default_factory=list)
-    web3: Web3 = field(default=None, init=False)
 
     block_range: DateRange = None
-    date_range: DateRange = None
     fee_config: FeeConfig = None
+    chain_id: int = None
     _total_earned_fees_usd: Decimal = None
 
     def __post_init__(self):
@@ -52,18 +54,9 @@ class Chain(AbstractChain):
         except KeyError:
             raise ValueError(f"chain id for {self.name} not found in `AddrBook`")
 
-        self._initialize_web3()
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
         self.bal_pools_gauges = BalPoolsGauges(self.name)
-
-    def _initialize_web3(self) -> None:
-        rpc_url = os.environ.get(f"{self.name.upper()}NODEURL")
-        if not rpc_url:
-            raise ValueError(
-                f"rpc for {self.name} is not configured.\nexpected '{self.name.upper()}NODEURL' in .env"
-            )
-        self.web3 = Web3(Web3.HTTPProvider(rpc_url))
 
     def init_core_pool_data(self, raw_core_pools: RawPools):
         logger.info(f"getting snapshots for {self.name}")
@@ -79,7 +72,9 @@ class Chain(AbstractChain):
         pool_to_gauge = {}
         for pool in pools:
             if pool.gauge.isKilled:
-                logger.info(f"{pool.id} gauge:{pool.gauge.address} is killed, skipping")
+                logger.info(
+                    f"gauge {pool.gauge.address} (pool id: {pool.id}) is killed, skipping"
+                )
                 continue
             pool_to_gauge[pool.id] = Web3.to_checksum_address(pool.gauge.address)
 
@@ -124,7 +119,7 @@ class Chain(AbstractChain):
                     gauge_address=pool_to_gauge[pool_id],
                     start_snap=start_snap,
                     end_snap=end_snap,
-                    last_join_exit_ts=self.bal_pools_gauges.get_last_join_exit(pool_id)
+                    last_join_exit_ts=self.bal_pools_gauges.get_last_join_exit(pool_id),
                 )
             )
         else:
@@ -132,7 +127,9 @@ class Chain(AbstractChain):
 
     @property
     def total_earned_fees_usd(self) -> Decimal:
-        return sum([pool_data.total_earned_fees_usd for pool_data in self.core_pool_data])
+        return sum(
+            [pool_data.total_earned_fees_usd for pool_data in self.core_pool_data]
+        )
 
     @staticmethod
     def _get_latest_snapshot(
@@ -147,6 +144,7 @@ class Chain(AbstractChain):
             None,
         )
 
+
 class Chains:
     def __init__(
         self,
@@ -157,6 +155,7 @@ class Chains:
     ):
         self._chains = {chain.name: chain for chain in chain_list}
         self.date_range = date_range
+
         self.raw_core_pools = RawCorePoolData(**requests.get(CORE_POOLS_URL).json())
         self.fee_config = FeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
@@ -183,12 +182,10 @@ class Chains:
         chain.core_pool_data = joblib.load(self._cache_file_path(chain))
 
     def _save_core_pools_to_cache(self, chain: Chain) -> None:
-        joblib.dump(
-            chain.core_pool_data, self._cache_file_path(chain)
-        )
+        joblib.dump(chain.core_pool_data, self._cache_file_path(chain))
 
     def _init_core_pools(self, use_cache: bool) -> None:
-        for chain in self._chains.values():
+        for chain in self.all_chains:
             chain.date_range = self.date_range
             chain.fee_config = self.fee_config
 

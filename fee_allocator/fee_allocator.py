@@ -1,6 +1,7 @@
 from typing import TypedDict
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
+from bal_tools import Web3RpcByChain
 from bal_tools.utils import get_abi
 import pandas as pd
 from decimal import Decimal
@@ -8,12 +9,15 @@ import os
 import datetime
 from pathlib import Path
 from web3 import Web3
+from dotenv import load_dotenv
 
 from fee_allocator.accounting.chains import Chain, Chains
 from fee_allocator.accounting.core_pools import CorePool
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.utils import get_hh_aura_target
 from fee_allocator.logger import logger
+
+load_dotenv()
 
 
 class InputFees(TypedDict):
@@ -31,20 +35,22 @@ class FeeAllocator:
         cache_dir: Path = None,
         use_cache: bool = True,
     ):
-        self.chains = self._get_chain_data(input_fees, date_range, cache_dir, use_cache)
+        self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
         self.input_fees = input_fees
         self.date_range = date_range
+        self.chains = self._get_chain_data(cache_dir, use_cache)
 
     def _get_chain_data(
         self,
-        input_fees: InputFees,
-        date_range: DateRange,
         cache_dir: Path,
         use_cache: bool,
     ) -> Chains:
         return Chains(
-            [Chain(chain, fees, date_range) for chain, fees in input_fees.items()],
-            date_range,
+            [
+                Chain(chain, fees, self.date_range, self.w3_by_chain[chain])
+                for chain, fees in self.input_fees.items()
+            ],
+            self.date_range,
             cache_dir=cache_dir,
             use_cache=use_cache,
         )
@@ -52,14 +58,21 @@ class FeeAllocator:
     def redistribute_fees(self):
         for chain in self.chains.all_chains:
             min_amount = chain.fee_config.min_vote_incentive_amount
-            pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
-            pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
-            
+            pools_to_redistribute = [
+                p for p in chain.core_pools if p.total_to_incentives_usd < min_amount
+            ]
+            pools_to_receive = [
+                p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount
+            ]
+
             if not pools_to_receive:
                 continue
 
             total_fees = sum(p.total_earned_fees_usd for p in pools_to_receive)
-            weights = {p.pool_id: p.total_earned_fees_usd / total_fees for p in pools_to_receive}
+            weights = {
+                p.pool_id: p.total_earned_fees_usd / total_fees
+                for p in pools_to_receive
+            }
 
             for pool in pools_to_redistribute:
                 total = pool.total_to_incentives_usd
@@ -78,24 +91,30 @@ class FeeAllocator:
                     receiving_pool.to_bal_incentives_usd += bal * weight
                     receiving_pool.redirected_incentives_usd += total * weight
 
-        self.handle_aura_min(buffer=0.25)
-        self.handle_aura_min()
+        self._handle_aura_min(buffer=0.25)
+        self._handle_aura_min()
 
-    def handle_aura_min(self, buffer=0):
+    def _handle_aura_min(self, buffer=0):
         for chain in self.chains.all_chains:
             min_aura_incentive = chain.fee_config.min_aura_incentive * (1 - buffer)
             debt_to_aura = Decimal(0)
 
             for pool in chain.core_pools:
-                if pool.to_aura_incentives_usd < min_aura_incentive or (pool.override and pool.override.voting_pool == "bal"):
+                if pool.to_aura_incentives_usd < min_aura_incentive or (
+                    pool.override and pool.override.voting_pool == "bal"
+                ):
                     debt_to_aura += pool.to_aura_incentives_usd
                     pool.to_bal_incentives_usd += pool.to_aura_incentives_usd
                     pool.to_aura_incentives_usd = Decimal(0)
-            
+
             if not debt_to_aura:
                 continue
 
-            pools_over_min = [p for p in chain.core_pools if p.to_aura_incentives_usd >= min_aura_incentive]
+            pools_over_min = [
+                p
+                for p in chain.core_pools
+                if p.to_aura_incentives_usd >= min_aura_incentive
+            ]
             if not pools_over_min:
                 continue
 
@@ -109,8 +128,10 @@ class FeeAllocator:
                 debt_repaid += amount
 
                 if debt_to_aura - debt_repaid >= 0:
-                    print(f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
-                          f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}")
+                    print(
+                        f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
+                        f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}"
+                    )
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")

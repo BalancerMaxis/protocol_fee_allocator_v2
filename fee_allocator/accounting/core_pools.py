@@ -12,6 +12,7 @@ from fee_allocator.accounting.overrides import CorePoolOverride, overrides
 if TYPE_CHECKING:
     from fee_allocator.accounting.chains import Chain
 
+
 @dataclass
 class CorePoolData:
     pool_id: str
@@ -63,19 +64,17 @@ class CorePoolData:
     def _set_earned_tokens_fee_usd(self) -> Decimal:
         return sum(
             token.twap_price * fee
-            for fee, token in zip(
-                self.earned_tokens_fee.values(), self.tokens_price
-            )
+            for fee, token in zip(self.earned_tokens_fee.values(), self.tokens_price)
             if fee > 0
         )
 
     def _set_total_earned_fees_usd(self) -> Decimal:
         return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
-    
+
 
 class CorePool(AbstractCorePool, CorePoolData):
     def __init__(self, data: CorePoolData, chain: Chain):
-        # copy over `data` attributes to self
+        # copy over CorePoolData attributes to self
         self.__dict__.update(vars(data))
         self.chain = chain
 

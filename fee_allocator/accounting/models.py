@@ -15,6 +15,7 @@ class FeeConfig(BaseModel):
     dao_share_pct: Decimal
     vote_incentive_pct: Decimal
 
+
 class RawCorePoolData(BaseModel):
     mainnet: RawPools
     polygon: RawPools
