@@ -35,29 +35,13 @@ class FeeAllocator:
         cache_dir: Path = None,
         use_cache: bool = True,
     ):
-        self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
         self.input_fees = input_fees
         self.date_range = date_range
-        self.chains = self._get_chain_data(cache_dir, use_cache)
-
-    def _get_chain_data(
-        self,
-        cache_dir: Path,
-        use_cache: bool,
-    ) -> Chains:
-        return Chains(
-            [
-                Chain(chain, fees, self.date_range, self.w3_by_chain[chain])
-                for chain, fees in self.input_fees.items()
-            ],
-            self.date_range,
-            cache_dir=cache_dir,
-            use_cache=use_cache,
-        )
+        self.chains = Chains(self.input_fees, self.date_range, cache_dir, use_cache)
 
     def redistribute_fees(self):
+        min_amount = self.chains.fee_config.min_vote_incentive_amount
         for chain in self.chains.all_chains:
-            min_amount = chain.fee_config.min_vote_incentive_amount
             pools_to_redistribute = [
                 p for p in chain.core_pools if p.total_to_incentives_usd < min_amount
             ]
@@ -95,8 +79,8 @@ class FeeAllocator:
         self._handle_aura_min()
 
     def _handle_aura_min(self, buffer=0):
+        min_aura_incentive = self.chains.fee_config.min_aura_incentive * (1 - buffer)
         for chain in self.chains.all_chains:
-            min_aura_incentive = chain.fee_config.min_aura_incentive * (1 - buffer)
             debt_to_aura = Decimal(0)
 
             for pool in chain.core_pools:
@@ -140,21 +124,21 @@ class FeeAllocator:
         output = []
         for chain in self.chains.all_chains:
             for core_pool in chain.core_pools:
-                if core_pool.total_to_incentives_usd == Decimal(0):
+                if int(core_pool.total_to_incentives_usd) == 0:
                     continue
 
                 output.append(
                     {
                         "target": core_pool.gauge_address,
                         "platform": "balancer",
-                        "amount": core_pool.to_bal_incentives_usd,
+                        "amount": round(core_pool.to_bal_incentives_usd, 4),
                     },
                 )
                 output.append(
                     {
                         "target": core_pool.gauge_address,
                         "platform": "aura",
-                        "amount": core_pool.to_aura_incentives_usd,
+                        "amount": round(core_pool.to_aura_incentives_usd, 4),
                     },
                 )
 

@@ -2,9 +2,9 @@ from pydantic import BaseModel
 from decimal import Decimal
 from typing import Dict, NewType
 
-PoolId = NewType("PoolId", str)
-Label = NewType("Label", str)
-RawPools = Dict[PoolId, Label]
+
+RawPools = Dict[NewType("PoolId", str), NewType("Label", str)]
+InputFees = Dict[NewType("ChainName", str), NewType("FeesCollected", int)]
 
 
 class FeeConfig(BaseModel):
