@@ -180,11 +180,9 @@ class Chain(AbstractChain):
 
         for pool_id, label in self.chains.raw_core_pools[self.name].items():
             if self._should_add_core_pool(pool_id, start_snaps):
-                pool_data.append(
-                    self._get_core_pool_data(
-                        pool_id, label, pool_to_gauge, start_snaps, end_snaps
-                    )
-                )
+                data =  self._get_core_pool_data(pool_id, label, pool_to_gauge, start_snaps, end_snaps)
+                if data:
+                    pool_data.append(data)
 
         return pool_data
 
@@ -241,6 +239,7 @@ class Chain(AbstractChain):
             )
         else:
             logger.warning(f"No snapshots found for {label} - {pool_id}")
+            return None
 
     @staticmethod
     def _get_latest_snapshot(
