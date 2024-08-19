@@ -6,8 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from fee_allocator.fee_allocator import FeeAllocator
-from fee_allocator.accounting.chains import Chain, Chains
-from fee_allocator.utils import get_last_thursday_odd_week, compare_incentive_csvs
+from fee_allocator.utils import get_last_thursday_odd_week
 
 
 parser = argparse.ArgumentParser()

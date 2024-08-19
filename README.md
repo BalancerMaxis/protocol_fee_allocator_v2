@@ -11,7 +11,7 @@
    ```
    cp .env.example .env
    ```
-   DRPC_KEY is required, but the  EXPLORER_API_KEY vars are optional, used for deterministic block by timestamp fetching.
+   DRPC_KEY is required, but the EXPLORER_API_KEY vars are optional. explorer apis are used for deterministic block by timestamp fetching. tests may fail due to block variance if not set.
 
 ## run
 ```
