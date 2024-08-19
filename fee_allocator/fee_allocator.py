@@ -260,20 +260,15 @@ class FeeAllocator:
             elif row["platform"] == "aura":
                 aura_bribe_market.depositBribe(prop_hash, "tokens/USDC", mantissa, 0, 1)
 
-        web3 = (
-            self.chains.mainnet.web3
-            if self.chains
-            else Web3(Web3.HTTPProvider(os.environ["MAINNETNODEURL"]))
-        )
         vebal_usdc_amount = (
-            web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
+            self.chains.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
             - sum(df["amount"])
             - 1
         )
         vebal_bal_amount = (
-            web3.eth.contract(bal.address, abi=get_abi("ERC20"))
+            self.chains.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
         )
