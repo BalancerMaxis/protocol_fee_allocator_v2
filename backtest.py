@@ -1,9 +1,7 @@
 from backtesting.v1_allocations import gather_v1_allocations, V1FeeAllocation
-from rich.console import Console
 from fee_allocator.fee_allocator import FeeAllocator as V2FeeAllocator
 from pathlib import Path
 
-console = Console()
 
 import os
 import pandas as pd
@@ -95,7 +93,7 @@ if __name__ == "__main__":
     v1_allocations = gather_v1_allocations()
 
     for v1_allocation in v1_allocations:
-        console.print(
+        print(
             f"running allocation {v1_allocation.start_date} - {v1_allocation.end_date}"
         )
         v2_allocator = V2FeeAllocator(
