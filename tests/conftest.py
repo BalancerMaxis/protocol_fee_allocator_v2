@@ -1,5 +1,5 @@
 from fee_allocator.fee_allocator import FeeAllocator
-from fee_allocator.accounting.chains import Chain, Chains
+from fee_allocator.accounting.corepoolrunconfig import CorePoolChain, CorePoolRunConfig
 
 import pytest
 import json

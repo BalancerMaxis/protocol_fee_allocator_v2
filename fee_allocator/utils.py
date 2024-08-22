@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 
 if TYPE_CHECKING:
-    from fee_allocator.accounting.chains import Chain
+    from fee_allocator.accounting.corepoolrunconfig import CorePoolChain
 
 
 load_dotenv()
@@ -67,7 +67,7 @@ def get_hh_aura_target(target: str) -> str:
     return False
 
 
-def get_block_by_ts(timestamp, chain: "Chain", before=False):
+def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
     try:
         api_key = os.getenv(f"EXPLORER_API_KEY_{chain.name.upper()}")
     except KeyError:

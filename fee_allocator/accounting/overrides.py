@@ -5,7 +5,7 @@ from fee_allocator.constants import POOL_OVERRIDES_URL
 import requests
 
 if TYPE_CHECKING:
-    from fee_allocator.accounting.core_pools import CorePool
+    from fee_allocator.accounting.core_pools import PoolFee
 
 overrides_data = requests.get(POOL_OVERRIDES_URL).json()
 
@@ -27,7 +27,7 @@ class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
     voting_pool: str = None
     market: str = None
 
-    def __init__(self, core_pool: "CorePool"):
+    def __init__(self, core_pool: "PoolFee"):
         self.core_pool = core_pool
 
     @property

@@ -11,8 +11,8 @@ from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
 
-from fee_allocator.accounting.chains import Chain, Chains
-from fee_allocator.accounting.core_pools import CorePool
+from fee_allocator.accounting.corepoolrunconfig import CorePoolChain, CorePoolRunConfig
+from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.utils import get_hh_aura_target
 from fee_allocator.logger import logger
@@ -37,7 +37,7 @@ class FeeAllocator:
     ):
         self.input_fees = input_fees
         self.date_range = date_range
-        self.chains = Chains(self.input_fees, self.date_range, cache_dir, use_cache)
+        self.chains = CorePoolRunConfig(self.input_fees, self.date_range, cache_dir, use_cache)
 
     def redistribute_fees(self):
         min_amount = self.chains.fee_config.min_vote_incentive_amount

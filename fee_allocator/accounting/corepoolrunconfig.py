@@ -13,7 +13,7 @@ from bal_tools.subgraph import DateRange
 from bal_tools.models import PoolSnapshot, Pool
 from bal_addresses import AddrBook
 
-from fee_allocator.accounting.core_pools import CorePool, CorePoolData
+from fee_allocator.accounting.core_pools import PoolFee, PoolFeeData
 from fee_allocator.accounting.interfaces import AbstractChain
 from fee_allocator.accounting.models import (
     FeeConfig,
@@ -33,9 +33,11 @@ from fee_allocator.utils import get_block_by_ts
 
 
 load_dotenv()
+"""
+This class is meant to hold fee data for each chain.  It accepts inputs of and calcualtes x and  y via 
+"""
 
-
-class Chains:
+class CorePoolRunConfig:
     def __init__(
         self,
         input_fees: InputFees,
@@ -67,10 +69,10 @@ class Chains:
         except KeyError:
             raise AttributeError(f"Chain {name} is not configured.")
 
-    def _init_chains(self) -> dict[str, Chain]:
+    def _init_chains(self) -> dict[str, CorePoolChain]:
         _chains = {}
         for chain, fees in self.input_fees.items():
-            _chains[chain] = Chain(self, chain, fees, self.w3_by_chain[chain])
+            _chains[chain] = CorePoolChain(self, chain, fees, self.w3_by_chain[chain])
         return _chains
 
     def _set_aura_vebal_share(self) -> Decimal:
@@ -85,10 +87,10 @@ class Chains:
 
     def _set_core_pools(self) -> None:
         for chain in self.all_chains:
-            chain.core_pools = [CorePool(data, chain) for data in chain.core_pool_data]
+            chain.core_pools = [PoolFee(data, chain) for data in chain.core_pool_data]
 
     @property
-    def all_chains(self) -> List[Chain]:
+    def all_chains(self) -> List[CorePoolChain]:
         return list(self._chains.values())
 
     @property
@@ -115,8 +117,8 @@ class Chains:
         return sum([chain.fees_collected for chain in self.all_chains])
 
 
-class Chain(AbstractChain):
-    def __init__(self, chains: Chains, name: str, fees: int, web3: Web3):
+class CorePoolChain(AbstractChain):
+    def __init__(self, chains: CorePoolRunConfig, name: str, fees: int, web3: Web3):
         self.chains = chains
         self.name = name
         self.fees_collected = fees
@@ -126,14 +128,14 @@ class Chain(AbstractChain):
             self.chain_id = AddrBook.chain_ids_by_name[self.name]
         except KeyError:
             raise ValueError(f"chain id for {self.name} not found in `AddrBook`")
-
+        # pass in fees directly
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
         self.bal_pools_gauges = BalPoolsGauges(self.name)
 
         self.block_range = self._set_block_range()
         self.core_pool_data = self._init_core_pool_data()
-        self.core_pools: List[CorePool] = []
+        self.core_pools: List[PoolFee] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = get_block_by_ts(self.chains.date_range[0], self)
@@ -141,7 +143,7 @@ class Chain(AbstractChain):
         logger.info(f"set blocks for {self.name}: {start} - {end}")
         return (start, end)
 
-    def _init_core_pool_data(self) -> list[CorePoolData]:
+    def _init_core_pool_data(self) -> list[PoolFeeData]:
         if self.chains.use_cache and self._cache_file_exists():
             pool_data = self._load_core_pools_from_cache()
         else:
@@ -157,14 +159,14 @@ class Chain(AbstractChain):
         filename = f"{self.name}_{self.chains.date_range[0]}_{self.chains.date_range[1]}.joblib"
         return self.chains.cache_dir / filename
 
-    def _load_core_pools_from_cache(self) -> list[CorePoolData]:
+    def _load_core_pools_from_cache(self) -> list[PoolFeeData]:
         logger.info(f"loading core pools from cache for {self.name}")
         return joblib.load(self._cache_file_path())
 
-    def _save_core_pools_to_cache(self, pool_data: list[CorePoolData]) -> None:
+    def _save_core_pools_to_cache(self, pool_data: list[PoolFeeData]) -> None:
         joblib.dump(pool_data, self._cache_file_path())
 
-    def _fetch_and_process_core_pool_data(self) -> list[CorePoolData]:
+    def _fetch_and_process_core_pool_data(self) -> list[PoolFeeData]:
         logger.info(f"getting snapshots for {self.name}")
 
         start_snaps = self.subgraph.get_balancer_pool_snapshots(
@@ -213,7 +215,7 @@ class Chain(AbstractChain):
         pool_to_gauge: Dict[str, str],
         start_snaps: list[PoolSnapshot],
         end_snaps: list[PoolSnapshot],
-    ) -> CorePoolData:
+    ) -> PoolFeeData:
         start_snap = self._get_latest_snapshot(start_snaps, pool_id)
         end_snap = self._get_latest_snapshot(end_snaps, pool_id)
 
@@ -227,7 +229,7 @@ class Chain(AbstractChain):
                 self.block_range[1],
             )
 
-            return CorePoolData(
+            return PoolFeeData(
                 pool_id=pool_id,
                 label=label,
                 bpt_price=prices.bpt_price,

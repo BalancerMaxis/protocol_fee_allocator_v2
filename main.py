@@ -40,9 +40,20 @@ def main() -> None:
     with open(input_fees_path) as f:
         input_fees = json.load(f)
 
+    # This loads input data fee data and times
+    # Loads in core pool data, fee data, and governance config from multiig ops and bal_addresses
+    #
+    #
+    #
+    #
+    #
+
     fee_allocator = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
+    # This redistributes fees away from pools based on the aura and bal mins defined by goverance
     fee_allocator.redistribute_fees()
+    # This generates an incentives csv in a standard format that can be used to make a transaction
     fee_allocator.generate_incentives_csv()
+    ## This dumps tx json to a file
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_bribe_payload(file_name)
 

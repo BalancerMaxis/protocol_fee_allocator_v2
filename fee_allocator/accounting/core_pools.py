@@ -10,11 +10,11 @@ from fee_allocator.accounting.interfaces import AbstractCorePool
 from fee_allocator.accounting.overrides import CorePoolOverride, overrides
 
 if TYPE_CHECKING:
-    from fee_allocator.accounting.chains import Chain
+    from fee_allocator.accounting.corepoolrunconfig import CorePoolChain
 
 
 @dataclass
-class CorePoolData:
+class PoolFeeData:
     pool_id: str
     label: str
     bpt_price: Decimal
@@ -72,8 +72,8 @@ class CorePoolData:
         return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
 
 
-class CorePool(AbstractCorePool, CorePoolData):
-    def __init__(self, data: CorePoolData, chain: Chain):
+class PoolFee(AbstractCorePool, PoolFeeData):
+    def __init__(self, data: PoolFeeData, chain: CorePoolChain):
         # copy over CorePoolData attributes to self
         self.__dict__.update(vars(data))
         self.chain = chain
