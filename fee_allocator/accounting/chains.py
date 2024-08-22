@@ -229,7 +229,7 @@ class Chain(AbstractChain):
 
             return CorePoolData(
                 pool_id=pool_id,
-                label=label,
+                symbol=label,
                 bpt_price=prices.bpt_price,
                 tokens_price=prices.token_prices,
                 gauge_address=pool_to_gauge[pool_id],

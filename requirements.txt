@@ -2,6 +2,7 @@ python-dotenv
 joblib==1.4.2
 pydantic==2.7.4
 web3==6.9.0
+eth-typing<5.0.0
 gql[requests]==3.4.1
 pandas==2.0.3
 numpy==1.26.4

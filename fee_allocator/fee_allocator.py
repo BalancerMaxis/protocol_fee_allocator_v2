@@ -1,11 +1,9 @@
 from typing import TypedDict
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
-from bal_tools import Web3RpcByChain
 from bal_tools.utils import get_abi
 import pandas as pd
 from decimal import Decimal
-import os
 import datetime
 from pathlib import Path
 from web3 import Web3
@@ -190,7 +188,7 @@ class FeeAllocator:
                     {
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
-                        "symbol": core_pool.label,
+                        "symbol": core_pool.symbol,
                         "earned_fees": round(core_pool.total_earned_fees_usd, 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),

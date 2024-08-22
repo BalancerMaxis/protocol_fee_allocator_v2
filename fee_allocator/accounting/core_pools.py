@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 @dataclass
 class CorePoolData:
     pool_id: str
-    label: str
+    symbol: str
     bpt_price: Decimal
     tokens_price: List[TWAPResult]
     gauge_address: str
