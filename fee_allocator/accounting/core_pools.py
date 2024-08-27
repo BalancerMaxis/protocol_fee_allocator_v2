@@ -17,59 +17,23 @@ if TYPE_CHECKING:
 class CorePoolData:
     pool_id: str
     label: str
-    bpt_price: Decimal
-    tokens_price: List[TWAPResult]
     gauge_address: str
     start_snap: PoolSnapshot
     end_snap: PoolSnapshot
     last_join_exit_ts: int
 
     address: str = field(init=False)
-    earned_bpt_fee: Decimal = field(init=False)
-    earned_bpt_fee_usd: Decimal = field(init=False)
-    earned_tokens_fee: Dict[str, Decimal] = field(init=False)
-    earned_tokens_fee_usd: Decimal = field(init=False)
     total_earned_fees_usd: Decimal = field(init=False)
 
     def __post_init__(self):
         self.address = self._set_address()
-        self.earned_bpt_fee = self._set_earned_bpt_fee()
-        self.earned_bpt_fee_usd = self._set_earned_bpt_fee_usd()
-        self.earned_tokens_fee = self._set_earned_tokens_fee()
-        self.earned_tokens_fee_usd = self._set_earned_tokens_fee_usd()
         self.total_earned_fees_usd = self._set_total_earned_fees_usd()
 
     def _set_address(self) -> str:
         return Web3.to_checksum_address(self.pool_id[:42])
 
-    def _set_earned_bpt_fee(self) -> Decimal:
-        return (
-            self.end_snap.totalProtocolFeePaidInBPT
-            - self.start_snap.totalProtocolFeePaidInBPT
-        )
-
-    def _set_earned_bpt_fee_usd(self) -> Decimal:
-        return self.bpt_price * self.earned_bpt_fee
-
-    def _set_earned_tokens_fee(self) -> Dict[str, Decimal]:
-        return {
-            end_token.address: Decimal(
-                end_token.paidProtocolFees - start_token.paidProtocolFees
-            )
-            for start_token, end_token in zip(
-                self.start_snap.tokens, self.end_snap.tokens
-            )
-        }
-
-    def _set_earned_tokens_fee_usd(self) -> Decimal:
-        return sum(
-            token.twap_price * fee
-            for fee, token in zip(self.earned_tokens_fee.values(), self.tokens_price)
-            if fee > 0
-        )
-
     def _set_total_earned_fees_usd(self) -> Decimal:
-        return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
+        return self.end_snap.totalProtocolFee - self.start_snap.totalProtocolFee
 
 
 class CorePool(AbstractCorePool, CorePoolData):
