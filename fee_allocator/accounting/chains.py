@@ -43,7 +43,8 @@ class Chains:
         cache_dir: Path = None,
         use_cache: bool = True,
     ):
-        self.input_fees = input_fees
+        # convert wei fees to usd. identified by the lack of a decimal point
+        self.input_fees = {chain: fee / 1e6 if isinstance(fee, int) else fee for chain, fee in input_fees.items()}
         self.date_range = date_range
         self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
 
