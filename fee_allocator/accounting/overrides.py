@@ -5,29 +5,29 @@ from fee_allocator.constants import POOL_OVERRIDES_URL
 import requests
 
 if TYPE_CHECKING:
-    from fee_allocator.accounting.core_pools import CorePool
+    from fee_allocator.accounting.core_pools import PoolFee
 
 overrides_data = requests.get(POOL_OVERRIDES_URL).json()
 
 
-class CorePoolOverrideMeta(ABCMeta):
-    overrides: Dict[str, Type["CorePoolOverride"]] = {}
+class PoolFeeOverrideMeta(ABCMeta):
+    overrides: Dict[str, Type["PoolFeeOverride"]] = {}
 
     def __new__(mcs, name, bases, attrs):
         cls = super().__new__(mcs, name, bases, attrs)
-        if name != "CorePoolOverride":
+        if name != "PoolFeeOverride":
             pool_id = attrs.get("pool_id")
             if pool_id:
                 mcs.overrides[pool_id] = cls
         return cls
 
 
-class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
+class PoolFeeOverride(ABC, metaclass=PoolFeeOverrideMeta):
     POOL_ID: str = None
     voting_pool: str = None
     market: str = None
 
-    def __init__(self, core_pool: "CorePool"):
+    def __init__(self, core_pool: "PoolFee"):
         self.core_pool = core_pool
 
     @property
@@ -41,7 +41,7 @@ class CorePoolOverride(ABC, metaclass=CorePoolOverrideMeta):
         pass
 
 
-class RethWethOverride(CorePoolOverride):
+class RethWethOverride(PoolFeeOverride):
     pool_id = "0x1e19cf2d73a72ef1332c882f20534b6519be0276000200000000000000000112"
     voting_pool = overrides_data.get(pool_id).get("voting_pool_override")
     market = overrides_data.get(pool_id).get("market_override")
@@ -61,4 +61,4 @@ class RethWethOverride(CorePoolOverride):
         )
 
 
-overrides = CorePoolOverrideMeta.overrides
+overrides = PoolFeeOverrideMeta.overrides

@@ -39,9 +39,17 @@ def main() -> None:
 
     with open(input_fees_path) as f:
         input_fees = json.load(f)
+        
+    date_range = (ts_in_the_past, ts_now)
 
-    fee_allocator = FeeAllocator(input_fees, (ts_in_the_past, ts_now))
+    fee_allocator = FeeAllocator(input_fees, date_range)
+
+    fee_allocator.run_config.set_core_pool_chains_data()
+    fee_allocator.run_config.set_aura_vebal_share()
+    fee_allocator.run_config.set_initial_pool_allocation()
+
     fee_allocator.redistribute_fees()
+
     fee_allocator.generate_incentives_csv()
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_bribe_payload(file_name)

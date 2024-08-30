@@ -6,15 +6,19 @@ from decimal import Decimal
 from datetime import datetime
 
 from bal_tools.models import PoolSnapshot, TWAPResult
-from fee_allocator.accounting.interfaces import AbstractCorePool
-from fee_allocator.accounting.overrides import CorePoolOverride, overrides
+from fee_allocator.accounting.interfaces import AbstractPoolFee
+from fee_allocator.accounting.overrides import PoolFeeOverride, overrides
 
 if TYPE_CHECKING:
-    from fee_allocator.accounting.chains import Chain
+    from fee_allocator.accounting.chains import CorePoolChain
 
 
 @dataclass
-class CorePoolData:
+class PoolFeeData:
+    """
+    holds pool fee data for a single pool sourced from the subgraph
+    this is also the class that gets cached
+    """
     pool_id: str
     symbol: str
     bpt_price: Decimal
@@ -72,9 +76,13 @@ class CorePoolData:
         return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
 
 
-class CorePool(AbstractCorePool, CorePoolData):
-    def __init__(self, data: CorePoolData, chain: Chain):
-        # copy over CorePoolData attributes to self
+class PoolFee(AbstractPoolFee, PoolFeeData):
+    """
+    creates an initial fee allocation based on the input `PoolFeeData` for a pool
+    the allocation is also based on properties from it's respective `CorePoolChain` such as the fee config and the pool's share of the total fees
+    """
+    def __init__(self, data: PoolFeeData, chain: CorePoolChain):
+        # copy over PoolFeeData attributes to self
         self.__dict__.update(vars(data))
         self.chain = chain
 

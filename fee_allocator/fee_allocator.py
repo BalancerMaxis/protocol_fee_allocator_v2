@@ -9,8 +9,8 @@ from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
 
-from fee_allocator.accounting.chains import Chain, Chains
-from fee_allocator.accounting.core_pools import CorePool
+from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
+from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.utils import get_hh_aura_target
 from fee_allocator.logger import logger
@@ -26,6 +26,11 @@ base_dir = Path(__file__).parent
 
 
 class FeeAllocator:
+    """
+    orchestrates the overall fee allocation workflow,
+    initializes the `CorePoolRunConfig` and contains methods for redistributing fees and generating csvs/payloads
+    """
+
     def __init__(
         self,
         input_fees: InputFees,
@@ -35,12 +40,21 @@ class FeeAllocator:
     ):
         self.input_fees = input_fees
         self.date_range = date_range
-        self.chains = Chains(self.input_fees, self.date_range, cache_dir, use_cache)
+        self.run_config = CorePoolRunConfig(self.input_fees, self.date_range, cache_dir, use_cache)
 
 
     def redistribute_fees(self):
-        min_amount = self.chains.fee_config.min_vote_incentive_amount
-        for chain in self.chains.all_chains:
+        """
+        Redistributes fees among pools based on minimum incentive amounts and chain-specific rules.
+        This method performs the following steps:
+        1. Identifies pools with incentives below the minimum threshold.
+        2. Redistributes fees from these pools to eligible pools above the threshold.
+        3. Recalculates incentive amounts for Aura and Balancer.
+        4. Adjusts DAO and veBAL shares based on the new distribution.
+        5. Handles Aura minimum incentives with and without a buffer.
+        """
+        min_amount = self.run_config.fee_config.min_vote_incentive_amount
+        for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
 
@@ -61,15 +75,15 @@ class FeeAllocator:
                 total = total_fees_to_redistribute * weight
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total
-                pool.to_aura_incentives_usd += total * self.chains.aura_vebal_share
-                pool.to_bal_incentives_usd += total * (1 - self.chains.aura_vebal_share)
+                pool.to_aura_incentives_usd += total * self.run_config.aura_vebal_share
+                pool.to_bal_incentives_usd += total * (1 - self.run_config.aura_vebal_share)
 
             total_to_incentives = sum(p.total_to_incentives_usd for p in chain.core_pools)
             for pool in chain.core_pools:
                 if total_to_incentives > 0:
                     pool.earned_fee_share_of_chain_usd = pool.total_to_incentives_usd / total_to_incentives
-                    pool.to_dao_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.chains.fee_config.dao_share_pct
-                    pool.to_vebal_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.chains.fee_config.vebal_share_pct
+                    pool.to_dao_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.run_config.fee_config.dao_share_pct
+                    pool.to_vebal_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
                 else:
                     pool.earned_fee_share_of_chain_usd = pool.to_dao_usd = pool.to_vebal_usd = Decimal(0)
 
@@ -77,8 +91,22 @@ class FeeAllocator:
         self._handle_aura_min()
 
     def _handle_aura_min(self, buffer=0):
-        min_aura_incentive = self.chains.fee_config.min_aura_incentive * (1 - buffer)
-        for chain in self.chains.all_chains:
+        """
+        Handles the minimum Aura incentive requirement for pools.
+        
+        This method performs the following steps:
+        1. Calculates the minimum Aura incentive amount, considering an optional buffer.
+        2. Identifies pools below the minimum threshold or with specific overrides.
+        3. Redistributes incentives from these pools to Balancer.
+        4. Reallocates the debt from pools below the minimum to eligible pools above the threshold.
+        5. Adjusts Aura and Balancer incentives for eligible pools to repay the debt.
+        6. Logs the remaining debt information for each affected pool.
+
+        Args:
+            buffer (float): An optional buffer percentage to adjust the minimum Aura incentive. Defaults to 0.
+        """
+        min_aura_incentive = self.run_config.fee_config.min_aura_incentive * (1 - buffer)
+        for chain in self.run_config.all_chains:
             debt_to_aura = Decimal(0)
 
             for pool in chain.core_pools:
@@ -120,7 +148,7 @@ class FeeAllocator:
     ) -> Path:
         logger.info("generating bribe csv")
         output = []
-        for chain in self.chains.all_chains:
+        for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
                 if int(core_pool.total_to_incentives_usd) == 0:
                     continue
@@ -144,7 +172,7 @@ class FeeAllocator:
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
                 "platform": "payment",
-                "amount": self.chains.total_to_dao_usd,
+                "amount": self.run_config.total_to_dao_usd,
             }
         )
 
@@ -155,12 +183,12 @@ class FeeAllocator:
         output_path = PROJECT_ROOT / output_path / f"bribes_{datetime_file_header}.csv"
         output_path.parent.mkdir(exist_ok=True)
 
-        logger.info(f"Total fees collected: {self.chains.total_fees_collected_usd}")
+        logger.info(f"Total fees collected: {self.run_config.total_fees_collected_usd}")
         logger.info(
-            f"Total incentives allocated: {self.chains.total_to_incentives_usd}"
+            f"Total incentives allocated: {self.run_config.total_to_incentives_usd}"
         )
         logger.info(
-            f"delta {self.chains.total_fees_collected_usd - self.chains.total_to_incentives_usd}"
+            f"delta {self.run_config.total_fees_collected_usd - self.run_config.total_to_incentives_usd}"
         )
 
         df.to_csv(
@@ -174,7 +202,7 @@ class FeeAllocator:
     ) -> Path:
         logger.info("generating incentives csv")
         output = []
-        for chain in self.chains.all_chains:
+        for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
                 if not any(
                     [
@@ -208,12 +236,12 @@ class FeeAllocator:
 
         df = pd.DataFrame(output)
         
-        logger.info(f"Total fees collected: {self.chains.total_fees_collected_usd}")
+        logger.info(f"Total fees collected: {self.run_config.total_fees_collected_usd}")
         logger.info(
-            f"Total incentives allocated: {self.chains.total_to_incentives_usd}"
+            f"Total incentives allocated: {self.run_config.total_to_incentives_usd}"
         )
         logger.info(
-            f"delta {self.chains.total_fees_collected_usd - self.chains.total_to_incentives_usd}"
+            f"delta {self.run_config.total_fees_collected_usd - self.run_config.total_to_incentives_usd}"
         )
         
     
@@ -272,14 +300,14 @@ class FeeAllocator:
                 aura_bribe_market.depositBribe(prop_hash, "tokens/USDC", mantissa, 0, 1)
 
         vebal_usdc_amount = (
-            self.chains.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
+            self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
             - sum(df["amount"])
             - 1
         )
         vebal_bal_amount = (
-            self.chains.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
+            self.run_config.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
         )

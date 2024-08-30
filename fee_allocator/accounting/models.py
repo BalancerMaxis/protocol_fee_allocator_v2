@@ -4,7 +4,7 @@ from typing import Dict, NewType
 
 
 RawPools = Dict[NewType("PoolId", str), NewType("Label", str)]
-InputFees = Dict[NewType("ChainName", str), NewType("FeesCollected", int)]
+InputFees = Dict[NewType("CorePoolChainName", str), NewType("FeesCollected", int)]
 
 
 class FeeConfig(BaseModel):
@@ -16,7 +16,7 @@ class FeeConfig(BaseModel):
     vote_incentive_pct: Decimal
 
 
-class RawCorePoolData(BaseModel):
+class RawPoolFeeData(BaseModel):
     mainnet: RawPools
     polygon: RawPools
     arbitrum: RawPools
