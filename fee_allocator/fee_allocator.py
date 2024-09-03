@@ -191,7 +191,9 @@ class FeeAllocator:
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
                         "symbol": core_pool.label,
+                        "last_join_exit": core_pool.last_join_exit_ts,
                         "earned_fees": round(core_pool.total_earned_fees_usd, 4),
+                        "total_distribtuion": round(sum([core_pool.to_vebal_usd, core_pool.to_dao_usd, core_pool.total_to_incentives_usd]), 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "total_incentives": round(core_pool.total_to_incentives_usd, 4),
@@ -201,7 +203,6 @@ class FeeAllocator:
                             core_pool.redirected_incentives_usd, 4
                         ),
                         "reroute_incentives": 0,
-                        "last_join_exit": core_pool.last_join_exit_ts,
                     },
                 )
 
