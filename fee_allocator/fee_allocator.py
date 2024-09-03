@@ -191,7 +191,7 @@ class FeeAllocator:
                 {
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
-                        "symbol": core_pool.label,
+                        "symbol": core_pool.symbol,
                         "last_join_exit": core_pool.last_join_exit_ts,
                         "earned_fees": round(core_pool.total_earned_fees_usd, 4),
                         "total_distribtuion": round(sum([core_pool.to_vebal_usd, core_pool.to_dao_usd, core_pool.total_to_incentives_usd]), 4),
