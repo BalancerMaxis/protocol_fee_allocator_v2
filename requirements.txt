@@ -7,4 +7,4 @@ gql[requests]==3.4.1
 pandas==2.0.3
 numpy==1.26.4
 git+https://github.com/BalancerMaxis/bal_addresses@0.9.9
-git+https://github.com/BalancerMaxis/bal_tools@v0.1.2
+git+https://github.com/BalancerMaxis/bal_tools@v0.1.5
