@@ -167,7 +167,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
     def set_pool_fee_data(self):
         """
-        sets the `PoolFeeData` for the chain
+        sets the `pool_fee_data` for the chain
         fetches from subgraph if not cached
         """
         if self.chains.use_cache and self._cache_file_path().exists():
@@ -264,8 +264,8 @@ class CorePoolChain(AbstractCorePoolChain):
             bpt_price=prices.bpt_price,
             tokens_price=prices.token_prices,
             gauge_address=pool_to_gauge[pool_id],
-            start_snap=start_snap,
-            end_snap=end_snap,
+            start_pool_snapshot=start_snap,
+            end_pool_snapshot=end_snap,
             last_join_exit_ts=self.bal_pools_gauges.get_last_join_exit(pool_id),
         )
 

@@ -204,17 +204,6 @@ class FeeAllocator:
         output = []
         for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
-                if not any(
-                    [
-                        core_pool.total_to_incentives_usd,
-                        core_pool.to_aura_incentives_usd,
-                        core_pool.to_bal_incentives_usd,
-                        core_pool.redirected_incentives_usd,
-                        core_pool.to_dao_usd,
-                        core_pool.to_vebal_usd,
-                    ]
-                ):
-                    continue
                 output.append(
                     {
                         "pool_id": core_pool.pool_id,

@@ -24,13 +24,13 @@ class PoolFeeData:
     bpt_price: Decimal
     tokens_price: List[TWAPResult]
     gauge_address: str
-    start_snap: PoolSnapshot
-    end_snap: PoolSnapshot
+    start_pool_snapshot: PoolSnapshot
+    end_pool_snapshot: PoolSnapshot
     last_join_exit_ts: int
 
     address: str = field(init=False)
     earned_bpt_fee: Decimal = field(init=False)
-    earned_bpt_fee_usd: Decimal = field(init=False)
+    earned_bpt_fee_usd_twap: Decimal = field(init=False)
     earned_tokens_fee: Dict[str, Decimal] = field(init=False)
     earned_tokens_fee_usd: Decimal = field(init=False)
     total_earned_fees_usd: Decimal = field(init=False)
@@ -38,7 +38,7 @@ class PoolFeeData:
     def __post_init__(self):
         self.address = self._set_address()
         self.earned_bpt_fee = self._set_earned_bpt_fee()
-        self.earned_bpt_fee_usd = self._set_earned_bpt_fee_usd()
+        self.earned_bpt_fee_usd_twap = self._set_earned_bpt_fee_usd_twap()
         self.earned_tokens_fee = self._set_earned_tokens_fee()
         self.earned_tokens_fee_usd = self._set_earned_tokens_fee_usd()
         self.total_earned_fees_usd = self._set_total_earned_fees_usd()
@@ -48,11 +48,11 @@ class PoolFeeData:
 
     def _set_earned_bpt_fee(self) -> Decimal:
         return (
-            self.end_snap.totalProtocolFeePaidInBPT
-            - self.start_snap.totalProtocolFeePaidInBPT
+            self.end_pool_snapshot.totalProtocolFeePaidInBPT
+            - self.start_pool_snapshot.totalProtocolFeePaidInBPT
         )
 
-    def _set_earned_bpt_fee_usd(self) -> Decimal:
+    def _set_earned_bpt_fee_usd_twap(self) -> Decimal:
         return self.bpt_price * self.earned_bpt_fee
 
     def _set_earned_tokens_fee(self) -> Dict[str, Decimal]:
@@ -61,7 +61,7 @@ class PoolFeeData:
                 end_token.paidProtocolFees - start_token.paidProtocolFees
             )
             for start_token, end_token in zip(
-                self.start_snap.tokens, self.end_snap.tokens
+                self.start_pool_snapshot.tokens, self.end_pool_snapshot.tokens
             )
         }
 
@@ -73,7 +73,7 @@ class PoolFeeData:
         )
 
     def _set_total_earned_fees_usd(self) -> Decimal:
-        return self.earned_bpt_fee_usd + self.earned_tokens_fee_usd
+        return self.earned_bpt_fee_usd_twap + self.earned_tokens_fee_usd
 
 
 class PoolFee(AbstractPoolFee, PoolFeeData):
