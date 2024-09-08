@@ -286,7 +286,7 @@ class CorePoolChain(AbstractCorePoolChain):
         )
 
     @property
-    def total_earned_fees_usd(self) -> Decimal:
+    def total_earned_fees_usd_twap(self) -> Decimal:
         return sum(
-            [pool_data.total_earned_fees_usd for pool_data in self.pool_fee_data]
+            [pool_data.total_earned_fees_usd_twap for pool_data in self.pool_fee_data]
         )
