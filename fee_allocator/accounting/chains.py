@@ -16,10 +16,8 @@ from bal_addresses import AddrBook
 from fee_allocator.accounting.core_pools import PoolFee, PoolFeeData
 from fee_allocator.accounting.interfaces import AbstractCorePoolChain
 from fee_allocator.accounting.models import (
-    FeeConfig,
-    RawPoolFeeData,
+    GlobalFeeConfig,
     RerouteConfig,
-    RawPools,
     InputFees,
 )
 from fee_allocator.constants import (
@@ -37,8 +35,14 @@ load_dotenv()
 
 class CorePoolRunConfig:
     """
-    intializes chain agnostic data and properties based on aggregated chain data.
-    contains methods to setup a `CorePoolChain` for each chain defined in `input_fees`
+    Initializes chain agnostic data and properties based on aggregated chain data.
+    Contains methods to setup a `CorePoolChain` for each chain defined in `input_fees`.
+
+    Args:
+        input_fees (InputFees): A dictionary of chain names to fee amounts.
+        date_range (DateRange): The date range for the fee allocation period.
+        cache_dir (Path, optional): The directory to use for caching. Defaults to fee_allocator/cache.
+        use_cache (bool, optional): Whether to use cached data. Defaults to True.
     """
     def __init__(
         self,
@@ -51,8 +55,7 @@ class CorePoolRunConfig:
         self.date_range = date_range
         self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
 
-        self.raw_core_pools = RawPoolFeeData(**requests.get(CORE_POOLS_URL).json())
-        self.fee_config = FeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
+        self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
 
         # caches a list of `PoolFeeData` for each chain
@@ -136,9 +139,15 @@ class CorePoolRunConfig:
 
 class CorePoolChain(AbstractCorePoolChain):
     """
-    initializes chain specific data/tools based on the input chain `name`
-    contains methods for fetching and processing a list of `PoolFeeData`/`PoolFee` for this chain
-    also handles caching pool data
+    Initializes chain specific data/tools based on the input chain `name`.
+    Contains methods for fetching and processing a list of `PoolFeeData`/`PoolFee` for this chain.
+    Also handles caching pool data.
+
+    Args:
+        chains (CorePoolRunConfig): The parent CorePoolRunConfig instance.
+        name (str): The name of the chain.
+        fees (int): The total fees collected for this chain.
+        web3 (Web3): The Web3 instance for this chain.
     """
     def __init__(self, chains: CorePoolRunConfig, name: str, fees: int, web3: Web3):
         self.chains = chains
@@ -210,7 +219,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
         pools_data = []
 
-        for pool_id, label in self.chains.raw_core_pools[self.name].items():
+        for pool_id, label in self.bal_pools_gauges.core_pools:
             start_snap = self._get_latest_snapshot(start_snaps, pool_id)
             end_snap = self._get_latest_snapshot(end_snaps, pool_id)
             if self._should_add_pool(pool_id, start_snap, end_snap):

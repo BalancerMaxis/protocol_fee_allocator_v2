@@ -27,8 +27,14 @@ base_dir = Path(__file__).parent
 
 class FeeAllocator:
     """
-    orchestrates the overall fee allocation workflow,
-    initializes the `CorePoolRunConfig` and contains methods for redistributing fees and generating csvs/payloads
+    Orchestrates the overall fee allocation workflow,
+    initializes the `CorePoolRunConfig` and contains methods for redistributing fees and generating csvs/payloads.
+
+    Args:
+        input_fees (InputFees): A dictionary of chain names to fee amounts.
+        date_range (DateRange): The date range for the fee allocation period.
+        cache_dir (Path, optional): The directory to use for caching. Defaults to fee_allocator/cache.
+        use_cache (bool, optional): Whether to use cached data. Defaults to True.
     """
 
     def __init__(
@@ -62,7 +68,7 @@ class FeeAllocator:
                 continue
 
             total_fees_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_redistribute)
-            total_weight = sum(p.total_earned_fees_usd for p in pools_to_receive)
+            total_weight = sum(p.total_earned_fees_usd_twap for p in pools_to_receive)
 
             for pool in pools_to_redistribute:
                 pool.redirected_incentives_usd -= pool.total_to_incentives_usd
@@ -71,7 +77,7 @@ class FeeAllocator:
                 pool.total_to_incentives_usd = Decimal(0)
 
             for pool in pools_to_receive:
-                weight = pool.total_earned_fees_usd / total_weight
+                weight = pool.total_earned_fees_usd_twap / total_weight
                 total = total_fees_to_redistribute * weight
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total

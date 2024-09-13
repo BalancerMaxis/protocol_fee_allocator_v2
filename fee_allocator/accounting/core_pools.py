@@ -16,8 +16,18 @@ if TYPE_CHECKING:
 @dataclass
 class PoolFeeData:
     """
-    holds pool fee data for a single pool sourced from the subgraph
-    this is also the class that gets cached
+    Holds pool fee data for a single pool sourced from the subgraph.
+    This is also the class that gets cached.
+
+    Args:
+        pool_id (str): The unique identifier for the pool.
+        symbol (str): The symbol representing the pool.
+        bpt_price (Decimal): The price of the BPT.
+        tokens_price (List[TWAPResult]): A list of time-weighted average prices for the tokens in the pool.
+        gauge_address (str): The address of the gauge associated with the pool.
+        start_pool_snapshot (PoolSnapshot): The pool snapshot at the start of the period.
+        end_pool_snapshot (PoolSnapshot): The pool snapshot at the end of the period.
+        last_join_exit_ts (int): The timestamp of the last join or exit event for the pool.
     """
     pool_id: str
     symbol: str
@@ -78,8 +88,12 @@ class PoolFeeData:
 
 class PoolFee(AbstractPoolFee, PoolFeeData):
     """
-    creates an initial fee allocation based on the input `PoolFeeData` for a pool
-    the allocation is also based on properties from it's respective `CorePoolChain` such as the fee config and the pool's share of the total fees
+    Creates an initial fee allocation based on the input `PoolFeeData` for a pool.
+    The allocation is also based on properties from its respective `CorePoolChain` such as the fee config and the pool's share of the total fees.
+
+    Args:
+        data (PoolFeeData): The pool fee data for initialization.
+        chain (CorePoolChain): The core pool chain this pool belongs to.
     """
     def __init__(self, data: PoolFeeData, chain: CorePoolChain):
         # copy over PoolFeeData attributes to self
