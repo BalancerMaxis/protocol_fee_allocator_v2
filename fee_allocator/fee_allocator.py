@@ -176,23 +176,14 @@ class FeeAllocator:
         output = []
         for chain in self.chains.all_chains:
             for core_pool in chain.core_pools:
-                if not any(
-                    [
-                        core_pool.total_to_incentives_usd,
-                        core_pool.to_aura_incentives_usd,
-                        core_pool.to_bal_incentives_usd,
-                        core_pool.redirected_incentives_usd,
-                        core_pool.to_dao_usd,
-                        core_pool.to_vebal_usd,
-                    ]
-                ):
-                    continue
                 output.append(
-                    {
+                {
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
                         "symbol": core_pool.symbol,
+                        "last_join_exit": core_pool.last_join_exit_ts,
                         "earned_fees": round(core_pool.total_earned_fees_usd, 4),
+                        "total_distribtuion": round(sum([core_pool.to_vebal_usd, core_pool.to_dao_usd, core_pool.total_to_incentives_usd]), 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "total_incentives": round(core_pool.total_to_incentives_usd, 4),
@@ -202,7 +193,6 @@ class FeeAllocator:
                             core_pool.redirected_incentives_usd, 4
                         ),
                         "reroute_incentives": 0,
-                        "last_join_exit": core_pool.last_join_exit_ts,
                     },
                 )
 
