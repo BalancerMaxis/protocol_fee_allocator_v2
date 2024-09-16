@@ -219,19 +219,17 @@ class Chain(AbstractChain):
 
         if start_snap and end_snap:
             logger.info(f"fetching twap prices for {label} on {self.name}")
-            prices = self.subgraph.get_twap_price_pool(
-                pool_id,
-                self.name,
-                self.chains.date_range,
-                self.web3,
-                self.block_range[1],
-            )
+            # prices = self.subgraph.get_twap_price_pool(
+            #     pool_id,
+            #     self.name,
+            #     self.chains.date_range,
+            #     self.web3,
+            #     self.block_range[1],
+            # )
 
             return CorePoolData(
                 pool_id=pool_id,
                 label=label,
-                bpt_price=prices.bpt_price,
-                tokens_price=prices.token_prices,
                 gauge_address=pool_to_gauge[pool_id],
                 start_snap=start_snap,
                 end_snap=end_snap,
