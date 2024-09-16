@@ -78,17 +78,14 @@ class CorePoolRunConfig:
         iterate over each chain in `input_fees` and fetch that chain's core pool data
         """
         _chains = {}
-        for chain, fees in self.input_fees.items():
-            chain = CorePoolChain(self, chain, fees, self.w3_by_chain[chain])
+        for chain_name, fees in self.input_fees.items():
+            chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             chain.set_pool_fee_data()
-            _chains[chain] = chain
+            _chains[chain_name] = chain
 
         self._chains = _chains
 
     def set_aura_vebal_share(self):
-        if not self._chains:
-            raise ValueError("Core pool chains data not set")
-
         if not self.mainnet:
             raise ValueError(
                 "mainnet must be initialized to calculate aura vebal share"
