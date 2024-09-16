@@ -32,16 +32,6 @@ def calculate_differences(v1_row, v2_row):
     
     return absolute_delta, relative_pct
 
-def format_difference(abs_diff, pct_diff):
-    if pd.isna(abs_diff) or pd.isna(pct_diff):
-        return ""
-    elif abs_diff == 0 and pct_diff == 0:
-        return "0"
-    elif pct_diff in [float('inf'), float('-inf')]:
-        return f"{abs_diff:.2f} ({pct_diff})"
-    else:
-        return f"{abs_diff:.2f} ({pct_diff:.2f}%)"
-
 def get_all_pools_info(v1_dir):
     all_pools_info = pd.DataFrame(columns=['chain', 'symbol'])
     for v1_file in os.listdir(v1_dir):
@@ -59,14 +49,17 @@ def process_file_pair(v1_file, v2_file, v1_dir, v2_dir, all_pools_info):
     results['chain'] = all_pools_info['chain']
     results['symbol'] = all_pools_info['symbol']
 
-    differences = []
+    abs_differences = []
+    rel_differences = []
     for pool in all_pools_info.index:
         v1_row = v1_df.loc[pool] if pool in v1_df.index else None
         v2_row = v2_df.loc[pool] if pool in v2_df.index else None
         abs_delta, rel_pct = calculate_differences(v1_row, v2_row)
-        differences.append(format_difference(abs_delta, rel_pct))
+        abs_differences.append(abs_delta)
+        rel_differences.append(rel_pct)
 
-    results[date_str] = differences
+    results[f"{date_str}_abs"] = abs_differences
+    results[f"{date_str}_pct"] = rel_differences
 
     return results
 
@@ -87,7 +80,6 @@ def create_comparison_csv(v1_dir, v2_dir, output_file):
     combined_results.to_csv(output_file)
     
     print(f"Comparison results written to {output_file}")
-
 
 if __name__ == "__main__":
     v1_allocations = gather_v1_allocations()

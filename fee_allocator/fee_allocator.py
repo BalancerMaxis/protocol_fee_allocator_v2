@@ -1,11 +1,9 @@
 from typing import TypedDict
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
-from bal_tools import Web3RpcByChain
 from bal_tools.utils import get_abi
 import pandas as pd
 from decimal import Decimal
-import os
 import datetime
 from pathlib import Path
 from web3 import Web3
@@ -39,41 +37,41 @@ class FeeAllocator:
         self.date_range = date_range
         self.chains = Chains(self.input_fees, self.date_range, cache_dir, use_cache)
 
+
     def redistribute_fees(self):
         min_amount = self.chains.fee_config.min_vote_incentive_amount
         for chain in self.chains.all_chains:
-            pools_to_redistribute = [
-                p for p in chain.core_pools if p.total_to_incentives_usd < min_amount
-            ]
-            pools_to_receive = [
-                p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount
-            ]
+            pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
+            pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
 
             if not pools_to_receive:
                 continue
 
-            total_fees = sum(p.total_earned_fees_usd for p in pools_to_receive)
-            weights = {
-                p.pool_id: p.total_earned_fees_usd / total_fees
-                for p in pools_to_receive
-            }
+            total_fees_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_redistribute)
+            total_weight = sum(p.total_earned_fees_usd for p in pools_to_receive)
 
             for pool in pools_to_redistribute:
-                total = pool.total_to_incentives_usd
-                aura = pool.to_aura_incentives_usd
-                bal = pool.to_bal_incentives_usd
-
-                pool.total_to_incentives_usd = Decimal(0)
+                pool.redirected_incentives_usd -= pool.total_to_incentives_usd
                 pool.to_aura_incentives_usd = Decimal(0)
                 pool.to_bal_incentives_usd = Decimal(0)
-                pool.redirected_incentives_usd -= total
+                pool.total_to_incentives_usd = Decimal(0)
 
-                for receiving_pool in pools_to_receive:
-                    weight = weights[receiving_pool.pool_id]
-                    receiving_pool.total_to_incentives_usd += total * weight
-                    receiving_pool.to_aura_incentives_usd += aura * weight
-                    receiving_pool.to_bal_incentives_usd += bal * weight
-                    receiving_pool.redirected_incentives_usd += total * weight
+            for pool in pools_to_receive:
+                weight = pool.total_earned_fees_usd / total_weight
+                total = total_fees_to_redistribute * weight
+                pool.total_to_incentives_usd += total
+                pool.redirected_incentives_usd += total
+                pool.to_aura_incentives_usd += total * self.chains.aura_vebal_share
+                pool.to_bal_incentives_usd += total * (1 - self.chains.aura_vebal_share)
+
+            total_to_incentives = sum(p.total_to_incentives_usd for p in chain.core_pools)
+            for pool in chain.core_pools:
+                if total_to_incentives > 0:
+                    pool.earned_fee_share_of_chain_usd = pool.total_to_incentives_usd / total_to_incentives
+                    pool.to_dao_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.chains.fee_config.dao_share_pct
+                    pool.to_vebal_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.chains.fee_config.vebal_share_pct
+                else:
+                    pool.earned_fee_share_of_chain_usd = pool.to_dao_usd = pool.to_vebal_usd = Decimal(0)
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
@@ -183,6 +181,9 @@ class FeeAllocator:
                         core_pool.total_to_incentives_usd,
                         core_pool.to_aura_incentives_usd,
                         core_pool.to_bal_incentives_usd,
+                        core_pool.redirected_incentives_usd,
+                        core_pool.to_dao_usd,
+                        core_pool.to_vebal_usd,
                     ]
                 ):
                     continue
@@ -206,6 +207,16 @@ class FeeAllocator:
                 )
 
         df = pd.DataFrame(output)
+        
+        logger.info(f"Total fees collected: {self.chains.total_fees_collected_usd}")
+        logger.info(
+            f"Total incentives allocated: {self.chains.total_to_incentives_usd}"
+        )
+        logger.info(
+            f"delta {self.chains.total_fees_collected_usd - self.chains.total_to_incentives_usd}"
+        )
+        
+    
         sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
         end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
