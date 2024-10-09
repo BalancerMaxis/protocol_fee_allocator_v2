@@ -29,7 +29,7 @@ from fee_allocator.constants import (
 )
 from fee_allocator.accounting.decorators import round
 from fee_allocator.logger import logger
-from fee_allocator.utils import get_block_by_ts
+from fee_allocator.utils import get_block_by_ts, get_eclp_fee_split_pools
 
 
 load_dotenv()
@@ -56,9 +56,11 @@ class Chains:
         self.cache_dir = cache_dir if cache_dir else Path(__file__).parent / "cache"
         self.cache_dir.mkdir(exist_ok=True)
 
+        self.eclp_fee_split_pools = get_eclp_fee_split_pools(self.input_fees.keys())
+
         self._chains = self._init_chains()
         self.aura_vebal_share = self._set_aura_vebal_share()
-
+        
         # CorePools can only be init after all Chains/Chain data is set
         self._set_core_pools()
 
@@ -66,7 +68,7 @@ class Chains:
         try:
             return self._chains[name]
         except KeyError:
-            raise AttributeError(f"Chain {name} is not configured.")
+            return getattr(self, name)
 
     def _init_chains(self) -> dict[str, Chain]:
         _chains = {}
@@ -114,6 +116,11 @@ class Chains:
     @round(4)
     def total_fees_collected_usd(self) -> Decimal:
         return sum([chain.fees_collected for chain in self.all_chains])
+    
+    @property
+    @round(4)
+    def total_to_gyro(self) -> Decimal:
+        return sum([chain.total_to_gyro for chain in self.all_chains]) / 2
 
 
 class Chain(AbstractChain):
@@ -133,7 +140,8 @@ class Chain(AbstractChain):
         self.bal_pools_gauges = BalPoolsGauges(self.name)
 
         self.block_range = self._set_block_range()
-        self.core_pool_data = self._init_core_pool_data()
+        self.core_pool_data, self.core_pool_data_eclp = self._init_core_pool_data()
+        self.total_to_gyro = sum([pool.total_earned_fees_usd for pool in self.core_pool_data])
         self.core_pools: List[CorePool] = []
 
     def _set_block_range(self) -> tuple[int, int]:
@@ -142,14 +150,14 @@ class Chain(AbstractChain):
         logger.info(f"set blocks for {self.name}: {start} - {end}")
         return (start, end)
 
-    def _init_core_pool_data(self) -> list[CorePoolData]:
+    def _init_core_pool_data(self) -> tuple[list[CorePoolData], list[CorePoolData]]:
         if self.chains.use_cache and self._cache_file_exists():
             pool_data = self._load_core_pools_from_cache()
         else:
-            pool_data = self._fetch_and_process_core_pool_data()
+            pool_data, pool_data_eclp = self._fetch_and_process_core_pool_data()
             self._save_core_pools_to_cache(pool_data)
 
-        return pool_data
+        return pool_data, pool_data_eclp
 
     def _cache_file_exists(self) -> bool:
         return self._cache_file_path().exists()
@@ -165,7 +173,7 @@ class Chain(AbstractChain):
     def _save_core_pools_to_cache(self, pool_data: list[CorePoolData]) -> None:
         joblib.dump(pool_data, self._cache_file_path())
 
-    def _fetch_and_process_core_pool_data(self) -> list[CorePoolData]:
+    def _fetch_and_process_core_pool_data(self) -> tuple[list[CorePoolData], list[CorePoolData]]:
         logger.info(f"getting snapshots for {self.name}")
 
         start_snaps = self.subgraph.get_balancer_pool_snapshots(
@@ -177,15 +185,23 @@ class Chain(AbstractChain):
         pools = self.subgraph.fetch_all_pools_info()
         pool_to_gauge = self._create_pool_to_gauge_mapping(pools)
 
+        pool_data_eclp = []
         pool_data = []
 
+        for pool_id, label in self.chains.eclp_fee_split_pools.get(self.name, {}).items():
+            if self._should_add_core_pool(pool_id, start_snaps):
+                data = self._get_core_pool_data(pool_id, label, pool_to_gauge, start_snaps, end_snaps)
+                if data:
+                    pool_data_eclp.append(data)
+                    
         for pool_id, label in self.chains.raw_core_pools[self.name].items():
             if self._should_add_core_pool(pool_id, start_snaps):
-                data =  self._get_core_pool_data(pool_id, label, pool_to_gauge, start_snaps, end_snaps)
+                data = self._get_core_pool_data(pool_id, label, pool_to_gauge, start_snaps, end_snaps)
                 if data:
                     pool_data.append(data)
+        
 
-        return pool_data
+        return pool_data, pool_data_eclp
 
     def _create_pool_to_gauge_mapping(self, pools: list[Pool]) -> Dict[str, str]:
         pool_to_gauge = {}
@@ -220,13 +236,17 @@ class Chain(AbstractChain):
 
         if start_snap and end_snap:
             logger.info(f"fetching twap prices for {label} on {self.name}")
-            prices = self.subgraph.get_twap_price_pool(
-                pool_id,
-                self.name,
-                self.chains.date_range,
-                self.web3,
-                self.block_range[1],
-            )
+            try:
+                prices = self.subgraph.get_twap_price_pool(
+                    pool_id,
+                    self.name,
+                    self.chains.date_range,
+                    self.web3,
+                    self.block_range[1],
+                )
+            except AttributeError:
+                logger.warning(f"No twap prices found for {label} - {pool_id}")
+                return None
 
             return CorePoolData(
                 pool_id=pool_id,

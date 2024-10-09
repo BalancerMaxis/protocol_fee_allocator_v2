@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Dict
 import pytz
 import requests
 from fee_allocator.constants import HH_API_URL
 from web3 import Web3
 import os
 from dotenv import load_dotenv
+from bal_tools.subgraph import Subgraph
 
 
 
@@ -93,3 +94,11 @@ def get_block_by_ts(timestamp, chain: "Chain", before=False):
         return int(data["result"])
     else:
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
+
+def get_eclp_fee_split_pools(chains: List[str]) -> Dict:
+    eclp_pools = {chain: {} for chain in chains}
+    for pool in Subgraph().fetch_all_pools_info():
+        pool_id, symbol, chain = pool.id, pool.symbol, pool.chain.lower()
+        if "ECLP" in symbol and chain in eclp_pools.keys():
+            eclp_pools[chain][pool_id] = f"{symbol}-fee-split"
+    return eclp_pools

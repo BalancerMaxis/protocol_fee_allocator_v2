@@ -147,6 +147,14 @@ class FeeAllocator:
                 "amount": self.chains.total_to_dao_usd,
             }
         )
+        
+        output.append(
+            {
+                "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # gyro fee recipient
+                "platform": "payment",
+                "amount": self.chains.total_to_gyro,
+            }
+        )
 
         df = pd.DataFrame(output)
         datetime_file_header = datetime.datetime.fromtimestamp(
@@ -243,8 +251,8 @@ class FeeAllocator:
 
         df = pd.read_csv(input_csv)
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
-        payment_df = df[df["platform"] == "payment"].iloc[0]
-
+        dao_payment_df = df[df["platform"] == "payment"].iloc[0]
+        gyro_payment_df = df[df["platform"] == "payment"].iloc[1]
         total_bribe_usdc = sum(bribe_df["amount"]) * 1e6
 
         """
@@ -277,7 +285,8 @@ class FeeAllocator:
         """
         transfer txs
         """
-        usdc.transfer(payment_df["target"], payment_df["amount"])
+        usdc.transfer(dao_payment_df["target"], dao_payment_df["amount"])
+        usdc.transfer(gyro_payment_df["target"], gyro_payment_df["amount"])
         usdc.transfer("maxiKeepers/veBalFeeInjector", vebal_usdc_amount * 1e6)
         bal.transfer("maxiKeepers/veBalFeeInjector", vebal_bal_amount * 1e18)
 
