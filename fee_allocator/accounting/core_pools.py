@@ -30,6 +30,7 @@ class PoolFeeData:
         last_join_exit_ts (int): The timestamp of the last join or exit event for the pool.
     """
     pool_id: str
+    address: str
     symbol: str
     bpt_price: Decimal
     tokens_price: List[TWAPResult]
@@ -38,7 +39,6 @@ class PoolFeeData:
     end_pool_snapshot: PoolSnapshot
     last_join_exit_ts: int
 
-    address: str = field(init=False)
     earned_bpt_fee: Decimal = field(init=False)
     earned_bpt_fee_usd_twap: Decimal = field(init=False)
     earned_tokens_fee: Dict[str, Decimal] = field(init=False)
@@ -46,15 +46,11 @@ class PoolFeeData:
     total_earned_fees_usd_twap: Decimal = field(init=False)
 
     def __post_init__(self):
-        self.address = self._set_address()
         self.earned_bpt_fee = self._set_earned_bpt_fee()
         self.earned_bpt_fee_usd_twap = self._set_earned_bpt_fee_usd_twap()
         self.earned_tokens_fee = self._set_earned_tokens_fee()
         self.earned_tokens_fee_usd_twap = self._set_earned_tokens_fee_usd_twap()
         self.total_earned_fees_usd_twap = self._set_total_earned_fees_usd_twap()
-
-    def _set_address(self) -> str:
-        return Web3.to_checksum_address(self.pool_id[:42])
 
     def _set_earned_bpt_fee(self) -> Decimal:
         return (

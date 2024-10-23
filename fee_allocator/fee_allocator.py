@@ -215,6 +215,7 @@ class FeeAllocator:
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
                         "symbol": core_pool.symbol,
+                        "bpt_price": round(core_pool.bpt_price, 4),
                         "earned_fees": round(core_pool.total_earned_fees_usd_twap, 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),

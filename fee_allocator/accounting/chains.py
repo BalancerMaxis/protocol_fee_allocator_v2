@@ -260,14 +260,13 @@ class CorePoolChain(AbstractCorePoolChain):
             pool_id,
             self.name,
             self.chains.date_range,
-            self.web3,
-            self.block_range[1],
         )
 
         return PoolFeeData(
             pool_id=pool_id,
+            address=prices.bpt_price.address,
             symbol=label,
-            bpt_price=prices.bpt_price,
+            bpt_price=prices.bpt_price.twap_price,
             tokens_price=prices.token_prices,
             gauge_address=pool_to_gauge[pool_id],
             start_pool_snapshot=start_snap,
