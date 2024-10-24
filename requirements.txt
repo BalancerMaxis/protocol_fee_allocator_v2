@@ -8,4 +8,4 @@ pandas==2.0.3
 numpy==1.26.4
 json-fix
 git+https://github.com/BalancerMaxis/bal_addresses@0.9.9
-git+https://github.com/BalancerMaxis/bal_tools@v0.1.5
+git+https://github.com/BalancerMaxis/bal_tools@v0.1.12
