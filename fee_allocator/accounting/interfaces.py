@@ -1,13 +1,13 @@
 from abc import ABC
 
 """
-`Chain` and `CorePool` reference each other so they need to be abstract to prevent circular imports.
+`CorePoolChain` and `PoolFee` reference each other so they need to be abstract to prevent circular imports.
 """
 
 
-class AbstractCorePool(ABC):
+class AbstractPoolFee(ABC):
     pass
 
 
-class AbstractChain(ABC):
+class AbstractCorePoolChain(ABC):
     pass
