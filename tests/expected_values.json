@@ -1,0 +1,42 @@
+{
+    "maticX-WMATIC-BPT": {
+      "earned_fees": 6565.8197,
+      "fees_to_vebal": 3708.1843,
+      "fees_to_dao": 1996.7146,
+      "total_incentives": 5704.8989,
+      "aura_incentives": 4403.5098,
+      "bal_incentives": 1301.3891
+    },
+    "ECLP-WMATIC-stMATIC": {
+        "earned_fees": 650.9324,
+        "fees_to_vebal": 367.6277,
+        "fees_to_dao": 197.9534,
+        "total_incentives": 565.5811,
+        "aura_incentives": 0.0000,
+        "bal_incentives": 565.5811
+    },
+    "ezETH-WETH-BPT": {
+        "earned_fees": 25537.7294,
+        "fees_to_vebal": 18380.6293,
+        "fees_to_dao": 9897.2619,
+        "total_incentives": 28603.1641,
+        "aura_incentives": 20769.5615,
+        "bal_incentives": 7833.6026
+    },
+    "B-rETH-STABLE": {
+        "earned_fees": 14925.8655,
+        "fees_to_vebal": 10742.8032,
+        "fees_to_dao": 5784.5863,
+        "total_incentives": 16717.4996,
+        "aura_incentives": 0.0000,
+        "bal_incentives": 16717.4996
+    },
+    "wstETH-WETH-BPT": {
+        "earned_fees": 14522.6377,
+        "fees_to_vebal": 10452.5824,
+        "fees_to_dao": 5628.3136,
+        "total_incentives": 16265.8702,
+        "aura_incentives": 12105.5685,
+        "bal_incentives": 4160.3017
+    }
+  }
