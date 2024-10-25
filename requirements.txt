@@ -7,5 +7,5 @@ gql[requests]==3.4.1
 pandas==2.0.3
 numpy==1.26.4
 json-fix
-git+https://github.com/BalancerMaxis/bal_addresses@chore/bump_bal_tools_0_1_12
+git+https://github.com/BalancerMaxis/bal_addresses@main
 git+https://github.com/BalancerMaxis/bal_tools.git@v0.1.12
