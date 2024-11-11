@@ -96,6 +96,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.__dict__.update(vars(data))
         self.chain = chain
 
+        self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
         self.total_to_incentives_usd = self._total_to_incentives_usd()
         self.to_aura_incentives_usd = self._to_aura_incentives_usd()
