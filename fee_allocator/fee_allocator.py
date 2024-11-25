@@ -99,6 +99,7 @@ class FeeAllocator:
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
+        self._filter_dusty_bal_incentives()
 
     def _handle_aura_min(self, buffer=0):
         """
@@ -152,6 +153,13 @@ class FeeAllocator:
                         f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
                         f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}"
                     )
+
+    def _filter_dusty_bal_incentives(self):
+        for chain in self.run_config.all_chains:
+            for pool in chain.core_pools:
+                if pool.to_bal_incentives_usd < Decimal(75):
+                    pool.to_aura_incentives_usd += pool.to_bal_incentives_usd
+                    pool.to_bal_incentives_usd = Decimal(0)
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")
