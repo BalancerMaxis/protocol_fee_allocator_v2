@@ -56,10 +56,19 @@ class FeeAllocator:
         1. Identifies pools with incentives below the minimum threshold.
         2. Redistributes fees from these pools to eligible pools above the threshold.
         3. Recalculates incentive amounts for Aura and Balancer.
-        4. Adjusts DAO and veBAL shares based on the new distribution.
+        4. Adjusts DAO and veBAL shares based on the original distribution.
         5. Handles Aura minimum incentives with and without a buffer.
         """
         min_amount = self.run_config.fee_config.min_vote_incentive_amount
+        
+        for chain in self.run_config.all_chains:
+            total_earned_fees = sum(p.total_earned_fees_usd_twap for p in chain.core_pools)
+            for pool in chain.core_pools:
+                if total_earned_fees > 0:
+                    pool.original_earned_fee_share = pool.total_earned_fees_usd_twap / total_earned_fees
+                else:
+                    pool.original_earned_fee_share = Decimal(0)
+
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
@@ -84,17 +93,13 @@ class FeeAllocator:
                 pool.to_aura_incentives_usd += total * self.run_config.aura_vebal_share
                 pool.to_bal_incentives_usd += total * (1 - self.run_config.aura_vebal_share)
 
-            total_to_incentives = sum(p.total_to_incentives_usd for p in chain.core_pools)
             for pool in chain.core_pools:
-                if total_to_incentives > 0:
-                    pool.earned_fee_share_of_chain_usd = pool.total_to_incentives_usd / total_to_incentives
-                    pool.to_dao_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.run_config.fee_config.dao_share_pct
-                    pool.to_vebal_usd = pool.earned_fee_share_of_chain_usd * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
-                else:
-                    pool.earned_fee_share_of_chain_usd = pool.to_dao_usd = pool.to_vebal_usd = Decimal(0)
+                pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
+                pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
+        self._filter_dusty_bal_incentives()
 
     def _handle_aura_min(self, buffer=0):
         """
@@ -148,6 +153,13 @@ class FeeAllocator:
                         f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
                         f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}"
                     )
+
+    def _filter_dusty_bal_incentives(self):
+        for chain in self.run_config.all_chains:
+            for pool in chain.core_pools:
+                if pool.to_bal_incentives_usd < Decimal(75):
+                    pool.to_aura_incentives_usd += pool.to_bal_incentives_usd
+                    pool.to_bal_incentives_usd = Decimal(0)
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")
@@ -211,14 +223,12 @@ class FeeAllocator:
         for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
                 output.append(
-                {
+                    {
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
                         "symbol": core_pool.symbol,
-                        "last_join_exit": core_pool.last_join_exit_ts,
                         "bpt_price": round(core_pool.bpt_price, 4),
                         "earned_fees": round(core_pool.total_earned_fees_usd_twap, 4),
-                        "total_distribtuion": round(sum([core_pool.to_vebal_usd, core_pool.to_dao_usd, core_pool.total_to_incentives_usd]), 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "total_incentives": round(core_pool.total_to_incentives_usd, 4),
@@ -228,6 +238,7 @@ class FeeAllocator:
                             core_pool.redirected_incentives_usd, 4
                         ),
                         "reroute_incentives": 0,
+                        "last_join_exit": core_pool.last_join_exit_ts,
                     },
                 )
 
