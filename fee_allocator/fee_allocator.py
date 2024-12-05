@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import TypedDict, Union
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
 from bal_tools.utils import get_abi
@@ -19,7 +19,7 @@ load_dotenv()
 
 
 class InputFees(TypedDict):
-    chainname: int
+    chainname: Union[int, float]
 
 
 base_dir = Path(__file__).parent
