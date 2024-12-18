@@ -20,6 +20,9 @@ class ExpectedValues:
 
 
 def test_fee_allocator(fee_allocator):
+    fee_allocator.run_config.set_core_pool_chains_data()
+    fee_allocator.run_config.set_aura_vebal_share()
+    fee_allocator.run_config.set_initial_pool_allocation()
     fee_allocator.redistribute_fees()
     incentives_path = fee_allocator.generate_incentives_csv(Path("tests/output"))
 
@@ -52,3 +55,4 @@ def test_fee_allocator(fee_allocator):
         assert np.isclose(
             pool.bal_incentives, expected.bal_incentives, rtol=0.1
         ), f"{symbol}: {pool.bal_incentives} != {expected.bal_incentives}"
+

@@ -70,6 +70,9 @@ def get_hh_aura_target(target: str) -> str:
 def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
     try:
         api_key = os.getenv(f"EXPLORER_API_KEY_{chain.name.upper()}")
+        explorer_url = EXPLORER_URLS.get(chain.name)
+        if not api_key or not explorer_url:
+            raise KeyError
     except KeyError:
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
 
@@ -81,7 +84,7 @@ def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
         "apikey": api_key,
     }
 
-    response = requests.get(EXPLORER_URLS[chain.name], params=params)
+    response = requests.get(explorer_url, params=params)
     try:
         response.raise_for_status()
     except requests.exceptions.HTTPError:
