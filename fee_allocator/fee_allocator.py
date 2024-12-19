@@ -8,6 +8,7 @@ import datetime
 from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
+import json
 
 from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
 from fee_allocator.accounting.core_pools import PoolFee
@@ -345,3 +346,85 @@ class FeeAllocator:
         if platform == "aura":
             return get_hh_aura_target(target)
         raise ValueError(f"platform {platform} not supported")
+
+    def recon(self) -> None:
+        """
+        Reconciles and validates fee distribution results.
+        Checks:
+        1. No negative incentive amounts
+        2. Sum of percentage allocations equals 1
+        3. Aura veBAL share within target range
+        4. Small delta between collected and distributed fees
+        """
+        total_fees = self.run_config.total_fees_collected_usd
+        total_incentives = Decimal(0)
+        total_dao = Decimal(0) 
+        total_vebal = Decimal(0)
+        total_aura = Decimal(0)
+        total_bal = Decimal(0)
+
+        for chain in self.run_config.all_chains:
+            for pool in chain.core_pools:
+                assert pool.to_aura_incentives_usd >= 0, f"Negative Aura incentives: {pool.pool_id}"
+                assert pool.to_bal_incentives_usd >= 0, f"Negative BAL incentives: {pool.pool_id}"
+                assert pool.to_dao_usd >= 0, f"Negative DAO fees: {pool.pool_id}"
+                assert pool.to_vebal_usd >= 0, f"Negative veBAL fees: {pool.pool_id}"
+                
+                total_aura += pool.to_aura_incentives_usd
+                total_bal += pool.to_bal_incentives_usd
+                total_dao += pool.to_dao_usd
+                total_vebal += pool.to_vebal_usd
+
+        total_incentives = total_aura + total_bal + total_dao + total_vebal
+        
+        delta = abs(total_fees - total_incentives)
+        assert delta < Decimal('0.15'), f"Large fee delta: {delta}"
+
+        total_pct = (
+            total_aura / total_incentives +
+            total_bal / total_incentives +
+            total_dao / total_incentives +
+            total_vebal / total_incentives
+        )
+        assert abs(1 - total_pct) < Decimal('0.0001'), f"Percentages don't sum to 1: {total_pct}"
+
+        aura_share = total_aura / (total_aura + total_bal)
+        target_share = self.run_config.aura_vebal_share
+        assert abs(aura_share - target_share) < Decimal('0.05'), \
+            f"Aura share {aura_share} deviates from target {target_share}"
+
+        summary = {
+            "feesCollected": float(round(total_fees, 2)),
+            "incentivesDistributed": float(round(total_incentives, 2)), 
+            "feesNotDistributed": float(round(total_fees - total_incentives, 2)),
+            "auraIncentives": float(round(total_aura, 2)),
+            "balIncentives": float(round(total_bal, 2)),
+            "feesToDao": float(round(total_dao, 2)),
+            "feesToVebal": float(round(total_vebal, 2)),
+            "auravebalShare": float(round(aura_share, 2)),
+            "auraIncentivesPct": float(round(total_aura / total_incentives, 4)),
+            "balIncentivesPct": float(round(total_bal / total_incentives, 4)),
+            "feesToDaoPct": float(round(total_dao / total_incentives, 4)),
+            "feesToVebalPct": float(round(total_vebal / total_incentives, 4)),
+            "createdAt": int(datetime.datetime.now().timestamp()),
+            "periodStart": self.date_range[0],
+            "periodEnd": self.date_range[1]
+        }
+
+        recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/recon.json"
+        recon_file.parent.mkdir(exist_ok=True)
+
+        if recon_file.exists():
+            with open(recon_file) as f:
+                data = json.load(f)
+        else:
+            data = []
+
+        for entry in data:
+            if entry["periodStart"] == summary["periodStart"] and \
+               entry["periodEnd"] == summary["periodEnd"]:
+                return
+
+        data.append(summary)
+        with open(recon_file, "w") as f:
+            json.dump(data, f, indent=2)
