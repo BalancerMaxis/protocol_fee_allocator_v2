@@ -1,6 +1,7 @@
 from typing import TypedDict, Union
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
+from bal_addresses import AddrBook
 from bal_tools.utils import get_abi
 import pandas as pd
 from decimal import Decimal
@@ -48,6 +49,7 @@ class FeeAllocator:
         self.input_fees = input_fees
         self.date_range = date_range
         self.run_config = CorePoolRunConfig(self.input_fees, self.date_range, cache_dir, use_cache)
+        self.book = AddrBook("mainnet").flatbook
 
 
     def redistribute_fees(self):
@@ -276,15 +278,15 @@ class FeeAllocator:
         builds a safe payload from the bribe csv
         """
         logger.info("generating payload")
-        builder = SafeTxBuilder("multisigs/fees")
-        usdc = SafeContract("tokens/USDC", abi_file_path=f"{base_dir}/abi/ERC20.json")
-        bal = SafeContract("tokens/BAL", abi_file_path=f"{base_dir}/abi/ERC20.json")
+        builder = SafeTxBuilder(self.book["multisigs/fees"])
+        usdc = SafeContract(self.book["tokens/USDC"], abi_file_path=f"{base_dir}/abi/ERC20.json")
+        bal = SafeContract(self.book["tokens/BAL"], abi_file_path=f"{base_dir}/abi/ERC20.json")
         aura_bribe_market = SafeContract(
-            "hidden_hand2/aura_briber",
+            self.book["hidden_hand2/aura_briber"],
             abi_file_path=f"{base_dir}/abi/bribe_market.json",
         )
         bal_bribe_market = SafeContract(
-            "hidden_hand2/balancer_briber",
+            self.book["hidden_hand2/balancer_briber"],
             abi_file_path=f"{base_dir}/abi/bribe_market.json",
         )
 
@@ -297,16 +299,16 @@ class FeeAllocator:
         """
         bribe txs
         """
-        usdc.approve("hidden_hand2/bribe_vault", total_bribe_usdc)
+        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc)
 
         for _, row in bribe_df.iterrows():
             prop_hash = self._get_prop_hash(row["platform"], row["target"])
             mantissa = int(row["amount"] * 1e6)
 
             if row["platform"] == "balancer":
-                bal_bribe_market.depositBribe(prop_hash, "tokens/USDC", mantissa, 0, 2)
+                bal_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 2)
             elif row["platform"] == "aura":
-                aura_bribe_market.depositBribe(prop_hash, "tokens/USDC", mantissa, 0, 1)
+                aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
 
         vebal_usdc_amount = (
             self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
@@ -325,8 +327,8 @@ class FeeAllocator:
         transfer txs
         """
         usdc.transfer(payment_df["target"], payment_df["amount"])
-        usdc.transfer("maxiKeepers/veBalFeeInjector", vebal_usdc_amount * 1e6)
-        bal.transfer("maxiKeepers/veBalFeeInjector", vebal_bal_amount * 1e18)
+        usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount * 1e6)
+        bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount * 1e18)
 
         datetime_file_header = datetime.datetime.fromtimestamp(
             self.date_range[1]
