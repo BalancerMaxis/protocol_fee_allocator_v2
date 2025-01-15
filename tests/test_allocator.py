@@ -26,33 +26,29 @@ def test_fee_allocator(fee_allocator):
     fee_allocator.redistribute_fees()
     incentives_path = fee_allocator.generate_incentives_csv(Path("tests/output"))
 
-    with open("tests/expected_values.json", "r") as f:
-        data = json.load(f)
+    generated_df = pd.read_csv(incentives_path)
+    expected_df = pd.read_csv(Path("tests/expected_incentives.csv"))
 
-    expected_values = {
-        symbol: ExpectedValues(**values) for symbol, values in data.items()
-    }
-    df = pd.read_csv(incentives_path)
+    assert set(generated_df['pool_id']) == set(expected_df['pool_id']), "Pool IDs don't match between generated and expected results"
 
-    for symbol, expected in expected_values.items():
-        pool = df[df["symbol"] == symbol].iloc[0]
+    merged_df = pd.merge(generated_df, expected_df, on='pool_id', suffixes=('_gen', '_exp'))
+    
+    numeric_columns = ['earned_fees', 'fees_to_vebal', 'fees_to_dao', 
+                      'total_incentives', 'aura_incentives', 'bal_incentives', 'redirected_incentives', 'reroute_incentives']
 
-        assert np.isclose(
-            pool.earned_fees, expected.earned_fees, rtol=0.1
-        ), f"{symbol}: {pool.earned_fees} != {expected.earned_fees}"
-        assert np.isclose(
-            pool.fees_to_vebal, expected.fees_to_vebal, rtol=0.1
-        ), f"{symbol}: {pool.fees_to_vebal} != {expected.fees_to_vebal}"
-        assert np.isclose(
-            pool.fees_to_dao, expected.fees_to_dao, rtol=0.1
-        ), f"{symbol}: {pool.fees_to_dao} != {expected.fees_to_dao}"
-        assert np.isclose(
-            pool.total_incentives, expected.total_incentives, rtol=0.1
-        ), f"{symbol}: {pool.total_incentives} != {expected.total_incentives}"
-        assert np.isclose(
-            pool.aura_incentives, expected.aura_incentives, rtol=0.1
-        ), f"{symbol}: {pool.aura_incentives} != {expected.aura_incentives}"
-        assert np.isclose(
-            pool.bal_incentives, expected.bal_incentives, rtol=0.1
-        ), f"{symbol}: {pool.bal_incentives} != {expected.bal_incentives}"
+    for col in numeric_columns:
+        gen_col = f'{col}_gen'
+        exp_col = f'{col}_exp'
+        
+        diff_pct = abs((merged_df[gen_col] - merged_df[exp_col]) / merged_df[exp_col] * 100)
+
+        problems = merged_df[diff_pct > 1]
+        
+        if not problems.empty:
+            error_msg = f"\nValues for {col} differ by more than 1% for the following pools:\n"
+            for _, row in problems.iterrows():
+                error_msg += f"Pool {row['pool_id']}: Generated={row[gen_col]:.2f}, Expected={row[exp_col]:.2f}, Diff={diff_pct.loc[_]:.2f}%\n"
+            pytest.fail(error_msg)
+
+    
 

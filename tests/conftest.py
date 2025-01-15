@@ -8,7 +8,7 @@ from pathlib import Path
 
 @pytest.fixture
 def fee_period():
-    return (1721260800, 1722470400)
+    return (1735171200, 1736380800)
 
 
 @pytest.fixture
