@@ -132,7 +132,7 @@ class CorePoolRunConfig:
     @property
     @round(4)
     def total_fees_collected_usd(self) -> Decimal:
-        return sum([chain.fees_collected for chain in self.all_chains])
+        return sum([chain.fees_collected for chain in self.all_chains if len(chain.core_pools) > 0])
 
 
 class CorePoolChain(AbstractCorePoolChain):
