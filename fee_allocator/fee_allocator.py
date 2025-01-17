@@ -315,7 +315,7 @@ class FeeAllocator:
         """
         transfer txs
         """
-        usdc.transfer(payment_df["target"], payment_df["amount"])
+        usdc.transfer(payment_df["target"], int(payment_df["amount"] * 1e6))
 
         spent_usdc = int(total_bribe_usdc + (payment_df["amount"] * 1e6))
         vebal_usdc_amount = int(
