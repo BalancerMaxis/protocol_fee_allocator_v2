@@ -302,6 +302,8 @@ class FeeAllocator:
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc)
 
         for _, row in bribe_df.iterrows():
+            if int(row["amount"]) == 0:
+                continue
             prop_hash = self._get_prop_hash(row["platform"], row["target"])
             mantissa = int(row["amount"] * 1e6)
 
@@ -310,25 +312,28 @@ class FeeAllocator:
             elif row["platform"] == "aura":
                 aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
 
-        vebal_usdc_amount = (
+        """
+        transfer txs
+        """
+        usdc.transfer(payment_df["target"], payment_df["amount"])
+
+        spent_usdc = int(total_bribe_usdc + (payment_df["amount"] * 1e6))
+        vebal_usdc_amount = int(
             self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
-            - sum(df["amount"])
+            - spent_usdc
             - 1
         )
+
         vebal_bal_amount = (
             self.run_config.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
         )
 
-        """
-        transfer txs
-        """
-        usdc.transfer(payment_df["target"], payment_df["amount"])
-        usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount * 1e6)
-        bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount * 1e18)
+        usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
+        bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
 
         datetime_file_header = datetime.datetime.fromtimestamp(
             self.date_range[1]
