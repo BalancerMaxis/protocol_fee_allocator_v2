@@ -1,12 +1,12 @@
 import argparse
-import json
 import os
 from datetime import datetime
+import pytz
 
 from dotenv import load_dotenv
 
 from fee_allocator.fee_allocator import FeeAllocator
-from fee_allocator.utils import get_last_thursday_odd_week
+from fee_allocator.utils import get_last_thursday_odd_week, fetch_collected_fees
 
 
 parser = argparse.ArgumentParser()
@@ -29,17 +29,17 @@ TS_2_WEEKS_AGO = int(get_last_thursday_odd_week().timestamp())
 
 def main() -> None:
     load_dotenv()
-    ts_now = parser.parse_args().ts_now or TS_NOW
-    ts_in_the_past = parser.parse_args().ts_in_the_past or TS_2_WEEKS_AGO
+    args = parser.parse_args()
+    ts_now = args.ts_now or TS_NOW
+    ts_in_the_past = args.ts_in_the_past or TS_2_WEEKS_AGO
     print(
         f"\n\n\n------\nRunning  from timestamps {ts_in_the_past} to {ts_now}\n------\n\n\n"
     )
-    fees_file_name = parser.parse_args().fees_file_name or "current_fees_collected.json"
-    input_fees_path = f"fee_allocator/fees_collected/{fees_file_name}"
+    
+    start_date = datetime.fromtimestamp(ts_in_the_past, tz=pytz.UTC).strftime("%Y-%m-%d")
+    end_date = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")
 
-    with open(input_fees_path) as f:
-        input_fees = json.load(f)
-        
+    input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name)
     date_range = (ts_in_the_past, ts_now)
 
     fee_allocator = FeeAllocator(input_fees, date_range)
