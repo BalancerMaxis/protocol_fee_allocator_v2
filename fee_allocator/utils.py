@@ -6,6 +6,7 @@ from fee_allocator.constants import HH_API_URL
 from web3 import Web3
 import os
 from dotenv import load_dotenv
+import json
 
 
 
@@ -96,3 +97,24 @@ def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
         return int(data["result"])
     else:
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
+
+def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None) -> dict:
+    # If fees_file_name is provided, use that directly
+    if fees_file_name:
+        filename = fees_file_name
+    else:
+        filename = f"fees_{start_date}_{end_date}.json"
+    
+    local_path = f"fee_allocator/fees_collected/{filename}"
+    if os.path.exists(local_path):
+        with open(local_path) as f:
+            return json.load(f)
+            
+    v1_fees = f"https://raw.githubusercontent.com/BalancerMaxis/protocol_fee_allocator/main/fee_allocator/fees_collected/{filename}"
+    response = requests.get(v1_fees)
+    
+    if response.status_code == 200:
+        print(f"fetched collected fees from: {v1_fees}")
+        return response.json()
+        
+    raise FileNotFoundError(f"Could not find fees file {filename} locally or remotely")
