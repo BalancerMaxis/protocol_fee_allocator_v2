@@ -43,6 +43,7 @@ class CorePoolRunConfig:
         date_range (DateRange): The date range for the fee allocation period.
         cache_dir (Path, optional): The directory to use for caching. Defaults to fee_allocator/cache.
         use_cache (bool, optional): Whether to use cached data. Defaults to True.
+        core_pools (Dict[str, Dict[str, str]], optional): A dictionary of core pools for each chain. Defaults to None.
     """
     def __init__(
         self,
@@ -50,11 +51,13 @@ class CorePoolRunConfig:
         date_range: DateRange,
         cache_dir: Path = None,
         use_cache: bool = True,
+        core_pools: Dict[str, Dict[str, str]] = None,
     ):
         # convert wei fees to usd. identified by the lack of a decimal point
         self.input_fees = {chain: fee / 1e6 if isinstance(fee, int) else fee for chain, fee in input_fees.items()}
         self.date_range = date_range
         self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
+        self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
@@ -152,6 +155,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.name = name
         self.fees_collected = fees
         self.web3 = web3
+        self.core_pools_list = self.chains.core_pools.get(self.name, {}) if self.chains.core_pools else None
 
         try:
             self.chain_id = AddrBook.chain_ids_by_name[self.name]
@@ -160,7 +164,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
-        self.bal_pools_gauges = BalPoolsGauges(self.name)
+        self.bal_pools_gauges = BalPoolsGauges(self.name, use_cached_core_pools=False)
 
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
@@ -217,7 +221,13 @@ class CorePoolChain(AbstractCorePoolChain):
 
         pools_data = []
 
-        for pool_id, label in self.bal_pools_gauges.core_pools:
+        core_pools_to_process = (
+            [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
+            if self.core_pools_list is not None
+            else self.bal_pools_gauges.core_pools
+        )
+
+        for pool_id, label in core_pools_to_process:
             start_snap = self._get_latest_snapshot(start_snaps, pool_id)
             end_snap = self._get_latest_snapshot(end_snaps, pool_id)
             if self._should_add_pool(pool_id, start_snap, end_snap):

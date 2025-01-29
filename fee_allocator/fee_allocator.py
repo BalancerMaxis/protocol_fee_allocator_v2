@@ -1,4 +1,4 @@
-from typing import TypedDict, Union
+from typing import TypedDict, Union, Dict
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
 from bal_addresses import AddrBook
@@ -37,6 +37,7 @@ class FeeAllocator:
         date_range (DateRange): The date range for the fee allocation period.
         cache_dir (Path, optional): The directory to use for caching. Defaults to fee_allocator/cache.
         use_cache (bool, optional): Whether to use cached data. Defaults to True.
+        core_pools (Dict[str, Dict[str, str]], optional): A dictionary of core pools. Defaults to None.
     """
 
     def __init__(
@@ -45,10 +46,17 @@ class FeeAllocator:
         date_range: DateRange,
         cache_dir: Path = None,
         use_cache: bool = True,
+        core_pools: Dict[str, Dict[str, str]] = None,
     ):
         self.input_fees = input_fees
         self.date_range = date_range
-        self.run_config = CorePoolRunConfig(self.input_fees, self.date_range, cache_dir, use_cache)
+        self.run_config = CorePoolRunConfig(
+            input_fees,
+            date_range,
+            cache_dir=cache_dir,
+            use_cache=use_cache,
+            core_pools=core_pools,
+        )
         self.book = AddrBook("mainnet").flatbook
 
 
