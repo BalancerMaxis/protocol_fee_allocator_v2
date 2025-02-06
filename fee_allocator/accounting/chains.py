@@ -80,12 +80,31 @@ class CorePoolRunConfig:
     def set_core_pool_chains_data(self):
         """
         iterate over each chain in `input_fees` and fetch that chain's core pool data
+        only chains that have core pools are initialized, else the fees are redistributed to other chains
         """
         _chains = {}
+        unallocated_fees = {}
+
         for chain_name, fees in self.input_fees.items():
             chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             chain.set_pool_fee_data()
-            _chains[chain_name] = chain
+            
+            if chain.pool_fee_data:
+                _chains[chain_name] = chain
+            else:
+                print(f"no core pools for {chain_name}. allocating fees to other chains...")
+                unallocated_fees[chain_name] = Decimal(fees)
+
+        # second pass; redistibute unallocated fees pro rata
+        if unallocated_fees and _chains:
+            total_earned_fees = sum(chain.total_earned_fees_usd_twap for chain in _chains.values())
+            total_unallocated = sum(unallocated_fees.values())
+
+            for chain in _chains.values():
+                if total_earned_fees > 0:
+                    chain_share = chain.total_earned_fees_usd_twap / total_earned_fees
+                    chain.fees_collected += total_unallocated * chain_share
+                    print(f"adding {total_unallocated * chain_share} fees to {chain.name} ({chain_share:.2%} of unallocated fees)")
 
         self._chains = _chains
 
@@ -135,7 +154,7 @@ class CorePoolRunConfig:
     @property
     @round(4)
     def total_fees_collected_usd(self) -> Decimal:
-        return sum([chain.fees_collected for chain in self.all_chains if len(chain.core_pools) > 0])
+        return sum(chain.fees_collected for chain in self.all_chains)
 
 
 class CorePoolChain(AbstractCorePoolChain):
@@ -207,6 +226,9 @@ class CorePoolChain(AbstractCorePoolChain):
         """
         fetches various chain data from subgraph and returns a list of `PoolFeeData` based on the core pool list
         """
+        if not self.bal_pools_gauges.core_pools:
+            return []
+
         logger.info(f"getting snapshots for {self.name}")
 
         start_snaps = self.subgraph.get_balancer_pool_snapshots(
