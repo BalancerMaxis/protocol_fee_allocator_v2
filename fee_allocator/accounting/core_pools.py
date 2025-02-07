@@ -114,11 +114,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.total_earned_fees_usd_twap / self.chain.total_earned_fees_usd_twap
 
     def _total_to_incentives_usd(self) -> Decimal:
-        to_distribute_to_incentives = self.chain.fees_collected * (
-            1
-            - self.chain.chains.fee_config.dao_share_pct
-            - self.chain.chains.fee_config.vebal_share_pct
-        )
+        to_distribute_to_incentives = self.chain.total_earned_fees_usd_twap * self.chain.chains.fee_config.vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     def _to_aura_incentives_usd(self) -> Decimal:
@@ -130,13 +126,13 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
     def _to_dao_usd(self) -> Decimal:
         return (
             self.earned_fee_share_of_chain_usd
-            * self.chain.fees_collected
+            * self.chain.total_earned_fees_usd_twap
             * self.chain.chains.fee_config.dao_share_pct
         )
 
     def _to_vebal_usd(self) -> Decimal:
         return (
             self.earned_fee_share_of_chain_usd
-            * self.chain.fees_collected
+            * self.chain.total_earned_fees_usd_twap
             * self.chain.chains.fee_config.vebal_share_pct
         )
