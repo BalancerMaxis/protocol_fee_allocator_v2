@@ -322,10 +322,9 @@ class FeeAllocator:
 
         spent_usdc = int(total_bribe_usdc + dao_fee_usdc)
         vebal_usdc_amount = int(
-            # self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
-            # .functions.balanceOf(builder.safe_address)
-            # .call()
-            401333231807
+            self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
+            .functions.balanceOf(builder.safe_address)
+            .call()
             - spent_usdc
             - 1
         )

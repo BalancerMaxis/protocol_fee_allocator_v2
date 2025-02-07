@@ -10,10 +10,7 @@ import json
 
 
 def test_fee_allocator(fee_allocator):
-    fee_allocator.run_config.set_core_pool_chains_data()
-    fee_allocator.run_config.set_aura_vebal_share()
-    fee_allocator.run_config.set_initial_pool_allocation()
-    fee_allocator.redistribute_fees()
+    fee_allocator.allocate()
     incentives_path = fee_allocator.generate_incentives_csv(Path("tests/output"))
 
     generated_df = pd.read_csv(incentives_path)
