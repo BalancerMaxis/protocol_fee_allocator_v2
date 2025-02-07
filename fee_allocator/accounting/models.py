@@ -16,9 +16,15 @@ class GlobalFeeConfig(BaseModel):
     min_aura_incentive: int
     min_existing_aura_incentive: int
     min_vote_incentive_amount: int
+    
+    # Core pool fee splits
     vebal_share_pct: Decimal
     dao_share_pct: Decimal
     vote_incentive_pct: Decimal
+    
+    # Non-core pool fee splits
+    noncore_vebal_share_pct: Decimal
+    noncore_dao_share_pct: Decimal
 
 
 class RerouteConfig(BaseModel):

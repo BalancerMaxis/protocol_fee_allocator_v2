@@ -43,12 +43,8 @@ def main() -> None:
     date_range = (ts_in_the_past, ts_now)
 
     fee_allocator = FeeAllocator(input_fees, date_range)
-
-    fee_allocator.run_config.set_core_pool_chains_data()
-    fee_allocator.run_config.set_aura_vebal_share()
-    fee_allocator.run_config.set_initial_pool_allocation()
-
-    fee_allocator.redistribute_fees()
+    
+    fee_allocator.allocate()
     fee_allocator.recon()
 
     fee_allocator.generate_incentives_csv()

@@ -328,3 +328,18 @@ class CorePoolChain(AbstractCorePoolChain):
         return sum(
             [pool_data.total_earned_fees_usd_twap for pool_data in self.pool_fee_data]
         )
+
+    @property
+    def noncore_fees_collected(self) -> Decimal:
+        if not self.core_pools:
+            raise ValueError("core pools not set")
+        total_core_fees = sum(pool.total_earned_fees_usd_twap for pool in self.core_pools)
+        return max(self.fees_collected - total_core_fees, Decimal(0))
+
+    @property
+    def noncore_to_dao_usd(self) -> Decimal:
+        return self.noncore_fees_collected * self.chains.fee_config.noncore_dao_share_pct
+
+    @property
+    def noncore_to_vebal_usd(self) -> Decimal:
+        return self.noncore_fees_collected * self.chains.fee_config.noncore_vebal_share_pct
