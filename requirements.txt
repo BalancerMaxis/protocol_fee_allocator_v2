@@ -7,4 +7,4 @@ gql[requests]
 pandas==2.0.3
 numpy==1.26.4
 json-fix
-git+https://github.com/BalancerMaxis/bal_addresses@feat/use-new-build-core-pools-feature
+git+https://github.com/BalancerMaxis/bal_addresses@main
