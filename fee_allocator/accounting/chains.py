@@ -11,6 +11,7 @@ from bal_tools import Subgraph, BalPoolsGauges, Web3RpcByChain
 import joblib
 from bal_tools.subgraph import DateRange
 from bal_tools.models import PoolSnapshot, Pool
+from bal_tools.errors import NoResultError
 from bal_addresses import AddrBook
 
 from fee_allocator.accounting.core_pools import PoolFee, PoolFeeData
@@ -295,6 +296,11 @@ class CorePoolChain(AbstractCorePoolChain):
             self.chains.date_range,
         )
 
+        try:
+            last_join_exit_ts = self.bal_pools_gauges.get_last_join_exit(pool_id)
+        except NoResultError:
+            last_join_exit_ts = 0
+
         return PoolFeeData(
             pool_id=pool_id,
             address=prices.bpt_price.address,
@@ -304,7 +310,7 @@ class CorePoolChain(AbstractCorePoolChain):
             gauge_address=pool_to_gauge[pool_id],
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
-            last_join_exit_ts=self.bal_pools_gauges.get_last_join_exit(pool_id),
+            last_join_exit_ts=last_join_exit_ts,
         )
 
     @staticmethod
