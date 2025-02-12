@@ -242,7 +242,7 @@ class CorePoolChain(AbstractCorePoolChain):
         for pool_id, label in self.bal_pools_gauges.core_pools:
             start_snap = self._get_latest_snapshot(start_snaps, pool_id)
             end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-            if self._should_add_pool(pool_id, start_snap, end_snap):
+            if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data(pool_id, label, pool_to_gauge, start_snap, end_snap)
                 pools_data.append(pool_fee_data)
 
@@ -263,11 +263,12 @@ class CorePoolChain(AbstractCorePoolChain):
         return pool_to_gauge
 
     def _should_add_pool(
-        self, pool_id: str, start_snap: PoolSnapshot, end_snap: PoolSnapshot
+        self, pool_id: str, start_snap: PoolSnapshot, end_snap: PoolSnapshot, pool_to_gauge: Dict[str, str]
     ) -> bool:
         return (
             start_snap and end_snap
             and self.bal_pools_gauges.has_alive_preferential_gauge(pool_id)
+            and pool_to_gauge.get(pool_id)
         )
 
     def _fetch_twap_prices_and_init_pool_fee_data(
