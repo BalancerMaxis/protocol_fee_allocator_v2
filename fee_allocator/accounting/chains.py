@@ -244,17 +244,24 @@ class CorePoolChain(AbstractCorePoolChain):
 
         pools_data = []
 
-        core_pools_to_process = (
+        core_pools_list = (
             [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
             if self.core_pools_list is not None
             else self.bal_pools_gauges.core_pools
         )
 
-        for pool_id, label in core_pools_to_process:
+        v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
+        v2_pools = [x for x in core_pools_list if x not in v3_pools]
+
+        for pool_id, label in v3_pools:
+                pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
+                pools_data.append(pool_fee_data)
+
+        for pool_id, label in v2_pools:
             start_snap = self._get_latest_snapshot(start_snaps, pool_id)
             end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-            if self._should_add_pool(pool_id, start_snap, end_snap):
-                pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data(pool_id, label, pool_to_gauge, start_snap, end_snap)
+            if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
                 pools_data.append(pool_fee_data)
 
         return pools_data
@@ -274,14 +281,15 @@ class CorePoolChain(AbstractCorePoolChain):
         return pool_to_gauge
 
     def _should_add_pool(
-        self, pool_id: str, start_snap: PoolSnapshot, end_snap: PoolSnapshot
+        self, pool_id: str, start_snap: PoolSnapshot, end_snap: PoolSnapshot, pool_to_gauge: Dict[str, str]
     ) -> bool:
         return (
             start_snap and end_snap
             and self.bal_pools_gauges.has_alive_preferential_gauge(pool_id)
+            and pool_to_gauge.get(pool_id)
         )
 
-    def _fetch_twap_prices_and_init_pool_fee_data(
+    def _fetch_twap_prices_and_init_pool_fee_data_v2(
         self,
         pool_id: str,
         label: str,
@@ -311,6 +319,31 @@ class CorePoolChain(AbstractCorePoolChain):
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
+        )
+    
+    def _fetch_twap_prices_and_init_pool_fee_data_v3(
+        self,
+        pool_id: str,
+        label: str,
+        pool_to_gauge: Dict[str, str],
+    ) -> PoolFeeData:
+        logger.info(f"fetching twap prices for {label} on {self.name}")
+
+        try:
+            last_join_exit_ts = self.bal_pools_gauges.get_last_join_exit(pool_id)
+        except NoResultError:
+            last_join_exit_ts = 0
+
+        return PoolFeeData(
+            pool_id=pool_id,
+            address=pool_id,
+            symbol=label,
+            tokens_price=None,
+            gauge_address=pool_to_gauge[pool_id],
+            start_pool_snapshot=None,
+            end_pool_snapshot=None,
+            last_join_exit_ts=last_join_exit_ts,
+            total_earned_fees_usd_twap=self.subgraph.get_v3_protocol_fees(pool_id, self.name, self.chains.date_range),
         )
 
     @staticmethod
