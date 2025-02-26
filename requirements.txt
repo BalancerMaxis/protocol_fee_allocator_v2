@@ -7,5 +7,4 @@ gql[requests]
 pandas==2.0.3
 numpy==1.26.4
 json-fix
-# git+https://github.com/BalancerMaxis/bal_addresses@main
-git+https://github.com/BalancerMaxis/bal_tools@v3-pool-fees
+git+https://github.com/BalancerMaxis/bal_addresses@v3-pool-fees

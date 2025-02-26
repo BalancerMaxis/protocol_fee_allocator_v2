@@ -247,7 +247,7 @@ class CorePoolChain(AbstractCorePoolChain):
         core_pools_list = (
             [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
             if self.core_pools_list is not None
-            else self.bal_pools_gauges.build_core_pools()
+            else self.bal_pools_gauges.core_pools
         )
 
         v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
