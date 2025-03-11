@@ -18,6 +18,7 @@ parser.add_argument(
     "--output_file_name", help="Output file name", type=str, required=False
 )
 parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
+parser.add_argument("--protocol_version", help="Protocol version (v2 or v3)", type=str, choices=["v2", "v3"], default="v2")
 
 ROOT = os.path.dirname(__file__)
 
@@ -42,8 +43,8 @@ def main() -> None:
     input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name)
     date_range = (ts_in_the_past, ts_now)
 
-    fee_allocator = FeeAllocator(input_fees, date_range)
-    
+    fee_allocator = FeeAllocator(input_fees, date_range, protocol_version=args.protocol_version)
+
     fee_allocator.allocate()
     fee_allocator.recon()
 

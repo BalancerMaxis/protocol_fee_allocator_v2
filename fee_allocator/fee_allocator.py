@@ -47,6 +47,7 @@ class FeeAllocator:
         cache_dir: Path = None,
         use_cache: bool = True,
         core_pools: Dict[str, Dict[str, str]] = None,
+        protocol_version: str = "v2",
     ):
         self.input_fees = input_fees
         self.date_range = date_range
@@ -56,6 +57,7 @@ class FeeAllocator:
             cache_dir=cache_dir,
             use_cache=use_cache,
             core_pools=core_pools,
+            protocol_version=protocol_version,
         )
         self.book = AddrBook("mainnet").flatbook
 
@@ -114,9 +116,9 @@ class FeeAllocator:
                 pool.to_aura_incentives_usd += total * self.run_config.aura_vebal_share
                 pool.to_bal_incentives_usd += total * (1 - self.run_config.aura_vebal_share)
 
-            for pool in chain.core_pools:
-                pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
-                pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
+            # for pool in chain.core_pools:
+            #     pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
+            #     pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
@@ -220,7 +222,7 @@ class FeeAllocator:
         datetime_file_header = datetime.datetime.fromtimestamp(
             self.date_range[1]
         ).date()
-        output_path = PROJECT_ROOT / output_path / f"bribes_{datetime_file_header}.csv"
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_bribes_{datetime_file_header}.csv"
         output_path.parent.mkdir(exist_ok=True)
 
         df.to_csv(
@@ -262,7 +264,7 @@ class FeeAllocator:
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
         end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
         output_path = (
-            PROJECT_ROOT / output_path / f"incentives_{start_date}_{end_date}.csv"
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{start_date}_{end_date}.csv"
         )
         output_path.parent.mkdir(exist_ok=True)
 
@@ -342,7 +344,7 @@ class FeeAllocator:
             self.date_range[1]
         ).date()
 
-        output_path = PROJECT_ROOT / output_path / f"{datetime_file_header}.json"
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_{datetime_file_header}.json"
         output_path.parent.mkdir(exist_ok=True)
         builder.output_payload(output_path)
 
@@ -418,7 +420,7 @@ class FeeAllocator:
             "periodEnd": self.date_range[1]
         }
 
-        recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/recon.json"
+        recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries" / f"{self.run_config.protocol_version}_recon.json"
         recon_file.parent.mkdir(exist_ok=True)
 
         if recon_file.exists():

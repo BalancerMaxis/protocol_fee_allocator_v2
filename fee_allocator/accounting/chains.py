@@ -53,6 +53,7 @@ class CorePoolRunConfig:
         cache_dir: Path = None,
         use_cache: bool = True,
         core_pools: Dict[str, Dict[str, str]] = None,
+        protocol_version: str = "v2",
     ):
         # convert wei fees to usd. identified by the lack of a decimal point
         self.input_fees = {chain: fee / 1e6 if isinstance(fee, int) else fee for chain, fee in input_fees.items()}
@@ -70,6 +71,7 @@ class CorePoolRunConfig:
 
         self._chains: Union[dict[str, CorePoolChain], None] = None
         self.aura_vebal_share: Union[Decimal, None] = None
+        self.protocol_version = protocol_version
 
 
     def __getattr__(self, name):
@@ -250,19 +252,20 @@ class CorePoolChain(AbstractCorePoolChain):
             else self.bal_pools_gauges.core_pools
         )
 
-        v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
-        v2_pools = [x for x in core_pools_list if x not in v3_pools]
-
-        for pool_id, label in v3_pools:
+        if self.chains.protocol_version == "v3":
+            v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
+            for pool_id, label in v3_pools:
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
                 pools_data.append(pool_fee_data)
 
-        for pool_id, label in v2_pools:
-            start_snap = self._get_latest_snapshot(start_snaps, pool_id)
-            end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-            if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
-                pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
-                pools_data.append(pool_fee_data)
+        elif self.chains.protocol_version == "v2":
+            v2_pools = [(p, l) for p, l in core_pools_list if len(p) != 42]
+            for pool_id, label in v2_pools:
+                start_snap = self._get_latest_snapshot(start_snaps, pool_id)
+                end_snap = self._get_latest_snapshot(end_snaps, pool_id)
+                if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                    pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
+                    pools_data.append(pool_fee_data)
 
         return pools_data
 
