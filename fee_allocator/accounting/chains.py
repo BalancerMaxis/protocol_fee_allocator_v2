@@ -256,7 +256,6 @@ class CorePoolChain(AbstractCorePoolChain):
             v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
             for pool_id, label in v3_pools:
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
-                pools_data.append(pool_fee_data)
 
         elif self.chains.protocol_version == "v2":
             v2_pools = [(p, l) for p, l in core_pools_list if len(p) != 42]
