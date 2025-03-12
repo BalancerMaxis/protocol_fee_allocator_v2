@@ -45,6 +45,7 @@ jobs:
           branch: gha-mimic-fees
           branch-suffix: timestamp
           delete-branch: true
+          base: test-workflow
           labels: "Biweekly-Mimic-Report"
           reviewers: |
             gosuto-inzasheru
