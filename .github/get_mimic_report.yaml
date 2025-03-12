@@ -1,0 +1,53 @@
+name: Collect Mimic Fee Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    # every thursday at 9am utc
+    - cron: "0 9 * * THU"
+
+jobs:
+  collect_fees:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Ensure directory exists
+        run: mkdir -p fee_allocator/fees_collected
+
+      - name: Run Mimic reporting script
+        run: python fee_allocator/fees_collected/get_report.py
+
+      - name: Save date
+        run: echo "RUN_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: new mimic fees report for period ending ${{ env.RUN_DATE }}"
+          title: "Biweekly Mimic data ending ${{ env.RUN_DATE }}"
+          body: |
+            Checks before merging:
+            - [ ] assert total wei of the json == [wei onchain](https://etherscan.io/token/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48?a=0x7c68c42de679ffb0f16216154c996c354cf1161b)
+            - [ ] all active chains present
+          branch: gha-mimic-fees
+          branch-suffix: timestamp
+          delete-branch: true
+          labels: "Biweekly-Mimic-Report"
+          reviewers: |
+            gosuto-inzasheru
+            Xeonus
+            jalbrekt85
+            Zen-Maxi
