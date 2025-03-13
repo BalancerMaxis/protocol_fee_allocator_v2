@@ -5,7 +5,8 @@ from datetime import datetime
 
 
 def combine_payloads(fees_file_name: str) -> None:
-    date_str = fees_file_name.split('_')[1].split('.')[0]
+    # Extract the end date from the fees file name (fees_START-DATE_END-DATE.json)
+    date_str = fees_file_name.split('_')[2].split('.')[0]
     
     payload_dir = Path("fee_allocator/payloads")
     
