@@ -349,7 +349,7 @@ class FeeAllocator:
     def _get_prop_hash(platform: str, target: str) -> str:
         if platform == "balancer":
             prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
-            return f"0x{prop.hex().lstrip('0x')}"
+            return f"0x{prop.hex().replace('0x', '')}"
         if platform == "aura":
             return get_hh_aura_target(target)
         raise ValueError(f"platform {platform} not supported")
