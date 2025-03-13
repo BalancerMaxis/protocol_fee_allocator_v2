@@ -40,7 +40,7 @@ def main() -> None:
     start_date = datetime.fromtimestamp(ts_in_the_past, tz=pytz.UTC).strftime("%Y-%m-%d")
     end_date = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")
 
-    input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name)
+    input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name, args.protocol_version)
     date_range = (ts_in_the_past, ts_now)
 
     fee_allocator = FeeAllocator(input_fees, date_range, protocol_version=args.protocol_version)

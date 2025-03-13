@@ -42,7 +42,7 @@ jobs:
           echo "JSON Path: $JSON_PATH"
           
           # Extract the end date from filename using cut
-          END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f3 | cut -d'.' -f1)
+          END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f4 | cut -d'.' -f1)
           
           echo "end-date=$END_DATE" >> $GITHUB_OUTPUT
 

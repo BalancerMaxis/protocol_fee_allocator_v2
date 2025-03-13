@@ -98,12 +98,12 @@ def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
     else:
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
 
-def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None) -> dict:
+def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None, protocol_version: str = "v2") -> dict:
     # If fees_file_name is provided, use that directly
     if fees_file_name:
         filename = fees_file_name
     else:
-        filename = f"fees_{start_date}_{end_date}.json"
+        filename = f"{protocol_version}_fees_{start_date}_{end_date}.json"
     
     local_path = f"fee_allocator/fees_collected/{filename}"
     if os.path.exists(local_path):
