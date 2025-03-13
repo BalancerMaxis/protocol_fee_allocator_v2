@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       manual_date:
-        description: "End date to process (YYYYMMDD format)"
+        description: 'End date to process (YYYYMMDD format)'
         required: true
         type: string
   push:
     branches:
       - test-workflow
     paths:
-      - "fee_allocator/fees_collected/*.json"
+      - 'fee_allocator/fees_collected/*.json'
 
 jobs:
   trigger_fee_collection:
@@ -33,21 +33,21 @@ jobs:
 
           # Get the path of the changed JSON file
           JSON_PATH=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'fee_allocator/fees_collected/.*\.json$' | head -n 1)
-
+          
           if [ -z "$JSON_PATH" ]; then
             echo "No JSON file found in recent changes."
             exit 1
           fi
-
+          
           echo "JSON Path: $JSON_PATH"
-
+          
           # Extract the end date from filename using cut
-          END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f3 | cut -d'.' -f1)
-
+          END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f4 | cut -d'.' -f1)
+          
           echo "end-date=$END_DATE" >> $GITHUB_OUTPUT
 
       - name: Trigger collect_fees_v2 workflow
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: Process and run reports for a fee round
-          inputs: '{"end_day": "${{ steps.get-date.outputs.end-date }}"}'
+          inputs: '{"end_day": "${{ steps.get-date.outputs.end-date }}"}' 
