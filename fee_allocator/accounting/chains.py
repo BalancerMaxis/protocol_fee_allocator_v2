@@ -213,9 +213,9 @@ class CorePoolChain(AbstractCorePoolChain):
 
     def _cache_file_path(self) -> Path:
         """
-        a cache file is uniquely identified by the chain name, start and end timestamp
+        a cache file is uniquely identified by the chain name, protocol version, and timestamps
         """
-        filename = f"{self.name}_{self.chains.date_range[0]}_{self.chains.date_range[1]}.joblib"
+        filename = f"{self.name}_{self.chains.protocol_version}_{self.chains.date_range[0]}_{self.chains.date_range[1]}.joblib"
         return self.chains.cache_dir / filename
 
     def _load_core_pools_from_cache(self) -> list[PoolFeeData]:
