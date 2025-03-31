@@ -20,11 +20,14 @@ from fee_allocator.accounting.models import (
     GlobalFeeConfig,
     RerouteConfig,
     InputFees,
+    AllianceConfig,
+    AlliancePool
 )
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
     CORE_POOLS_URL,
     REROUTE_CONFIG_URL,
+    ALLIANCE_CONFIG_URL,
 )
 from fee_allocator.accounting.decorators import round
 from fee_allocator.logger import logger
@@ -62,6 +65,7 @@ class CorePoolRunConfig:
         self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
+        self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
         self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
 
         # caches a list of `PoolFeeData` for each chain
@@ -131,6 +135,10 @@ class CorePoolRunConfig:
 
         for chain in self.all_chains:
             chain.core_pools = [PoolFee(data, chain) for data in chain.pool_fee_data]
+            from rich.console import Console
+            console = Console()
+            console.print(chain.core_pools)
+
 
     @property
     def all_chains(self) -> List[CorePoolChain]:
@@ -178,6 +186,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.fees_collected = fees
         self.web3 = web3
         self.core_pools_list = self.chains.core_pools.get(self.name, {}) if self.chains.core_pools else None
+        self.alliance_pools: List[AlliancePool] = []
 
         try:
             self.chain_id = AddrBook.chain_ids_by_name[self.name]
@@ -191,6 +200,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
         self.core_pools: List[PoolFee] = []
+        self.alliance_noncore_fee_data: List[PoolFee] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = get_block_by_ts(self.chains.date_range[0], self)
@@ -246,26 +256,53 @@ class CorePoolChain(AbstractCorePoolChain):
 
         pools_data = []
 
-        core_pools_list = (
+        core_pools_list = list(
             [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
             if self.core_pools_list is not None
             else self.bal_pools_gauges.core_pools
         )
 
+        self.alliance_pools = [
+            pool
+            for member in self.chains.alliance_config.alliance_members
+            for pool in member.pools
+            if pool.network == self.name and pool.active
+        ]
+ 
+        alliance_pool_ids = {pool.pool_id for pool in self.alliance_pools}
+        alliance_pool_tuples = [(pool.pool_id, pool.partner) for pool in self.alliance_pools]
+
+        core_pools_dict = dict(core_pools_list)
+        core_pools_dict.update(dict(alliance_pool_tuples))
+        core_pools_list = list(core_pools_dict.items())
+
+        # process v3 pools
         if self.chains.protocol_version == "v3":
             v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
             for pool_id, label in v3_pools:
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
-                pools_data.append(pool_fee_data)
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                if alliance_pool:
+                    if alliance_pool.pool_type != "core":
+                        self.alliance_noncore_fee_data.append(pool_fee_data)
+                    else:
+                        pools_data.append(pool_fee_data)
 
+        # process v2 pools
         elif self.chains.protocol_version == "v2":
             v2_pools = [(p, l) for p, l in core_pools_list if len(p) != 42]
             for pool_id, label in v2_pools:
                 start_snap = self._get_latest_snapshot(start_snaps, pool_id)
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-                if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+
+                if pool_id in alliance_pool_ids or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
-                    pools_data.append(pool_fee_data)
+                    alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                    if alliance_pool:
+                        if alliance_pool.pool_type != "core":
+                            self.alliance_noncore_fee_data.append(pool_fee_data)
+                        else:
+                            pools_data.append(pool_fee_data)
 
         return pools_data
 
@@ -318,12 +355,12 @@ class CorePoolChain(AbstractCorePoolChain):
             symbol=label,
             bpt_price=prices.bpt_price.twap_price,
             tokens_price=prices.token_prices,
-            gauge_address=pool_to_gauge[pool_id],
+            gauge_address=pool_to_gauge.get(pool_id),
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
         )
-    
+
     def _fetch_twap_prices_and_init_pool_fee_data_v3(
         self,
         pool_id: str,
@@ -342,12 +379,13 @@ class CorePoolChain(AbstractCorePoolChain):
             address=pool_id,
             symbol=label,
             tokens_price=None,
-            gauge_address=pool_to_gauge[pool_id],
+            gauge_address=pool_to_gauge.get(pool_id),
             start_pool_snapshot=None,
             end_pool_snapshot=None,
             last_join_exit_ts=last_join_exit_ts,
             total_earned_fees_usd_twap=self.subgraph.get_v3_protocol_fees(pool_id, self.name, self.chains.date_range),
         )
+    
 
     @staticmethod
     def _get_latest_snapshot(
@@ -376,7 +414,8 @@ class CorePoolChain(AbstractCorePoolChain):
         if not self.core_pools:
             raise ValueError("core pools not set")
         total_core_fees = sum(pool.total_earned_fees_usd_twap for pool in self.core_pools)
-        return max(self.fees_collected - total_core_fees, Decimal(0))
+        total_noncore_fees = sum(pool.total_earned_fees_usd_twap for pool in self.alliance_noncore_fee_data)
+        return max(self.fees_collected - total_core_fees - total_noncore_fees, Decimal(0))
 
     @property
     def noncore_to_dao_usd(self) -> Decimal:
@@ -385,3 +424,15 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     def noncore_to_vebal_usd(self) -> Decimal:
         return self.noncore_fees_collected * self.chains.fee_config.noncore_vebal_share_pct
+    
+    @property
+    def alliance_noncore_fees_collected(self) -> Decimal:
+        return sum(pool.total_earned_fees_usd_twap for pool in self.alliance_noncore_fee_data)
+
+    @property
+    def alliance_noncore_to_dao_usd(self) -> Decimal:
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct
+
+    @property
+    def alliance_noncore_to_vebal_usd(self) -> Decimal:
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct

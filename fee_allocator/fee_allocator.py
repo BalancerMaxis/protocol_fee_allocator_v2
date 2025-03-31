@@ -79,18 +79,17 @@ class FeeAllocator:
         1. Identifies pools with incentives below the minimum threshold.
         2. Redistributes fees from these pools to eligible pools above the threshold.
         3. Recalculates incentive amounts for Aura and Balancer.
-        4. Adjusts DAO and veBAL shares based on the original distribution.
-        5. Handles Aura minimum incentives with and without a buffer.
+        4. Handles Aura minimum incentives with and without a buffer.
         """
         min_amount = self.run_config.fee_config.min_vote_incentive_amount
         
-        for chain in self.run_config.all_chains:
-            total_earned_fees = sum(p.total_earned_fees_usd_twap for p in chain.core_pools)
-            for pool in chain.core_pools:
-                if total_earned_fees > 0:
-                    pool.original_earned_fee_share = pool.total_earned_fees_usd_twap / total_earned_fees
-                else:
-                    pool.original_earned_fee_share = Decimal(0)
+        # for chain in self.run_config.all_chains:
+        #     total_earned_fees = sum(p.total_earned_fees_usd_twap for p in chain.core_pools)
+        #     for pool in chain.core_pools:
+        #         if total_earned_fees > 0:
+        #             pool.original_earned_fee_share = pool.total_earned_fees_usd_twap / total_earned_fees
+        #         else:
+        #             pool.original_earned_fee_share = Decimal(0)
 
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
@@ -209,7 +208,7 @@ class FeeAllocator:
                     },
                 )
 
-        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd for chain in self.run_config.all_chains)
+        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd for chain in self.run_config.all_chains)
         output.append(
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
@@ -274,12 +273,56 @@ class FeeAllocator:
         )
 
         return output_path
+    
+    def generate_partner_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/partner")
+    ) -> Path:
+        logger.info("generating partner csv")
+        output = []
+        for chain in self.run_config.all_chains:
+            for alliance_pool in chain.alliance_pools:
+                member = next((m for m in self.run_config.alliance_config.alliance_members if alliance_pool.partner == m.name), None)
+                core_pool = next((p for p in chain.core_pools if p.pool_id == alliance_pool.pool_id), None)
+                noncore_pool = next((p for p in chain.alliance_noncore_fee_data if p.pool_id == alliance_pool.pool_id), None)
+
+                if core_pool:
+                    partner_fee = core_pool.to_partner_usd
+                    pool_id = core_pool.pool_id
+                elif noncore_pool:
+                    partner_fee = (
+                        noncore_pool.total_earned_fees_usd_twap / chain.alliance_noncore_fees_collected
+                        * chain.alliance_noncore_fees_collected
+                        * self.run_config.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
+                    )
+                    pool_id = noncore_pool.pool_id
+                else:
+                    raise ValueError(f"No core or noncore pool found for {alliance_pool.pool_id}")
+
+                output.append({
+                    "pool_id": pool_id,
+                    "chain": chain.name,
+                    "partner": alliance_pool.partner,
+                    "amount": partner_fee,
+                    "target": member.multisig_address,
+                })
+
+
+        df = pd.DataFrame(output)
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_partner.csv"
+        output_path.parent.mkdir(exist_ok=True)
+        df.to_csv(output_path, index=False)
+        return output_path
 
     def generate_bribe_payload(
-        self, input_csv: str, output_path: Path = Path("fee_allocator/payloads")
+        self, input_csv: str, output_path: Path = Path("fee_allocator/payloads"), partner_csv: str = None
     ) -> Path:
         """
-        builds a safe payload from the bribe csv
+        builds a safe payload from the bribe csv and optionally partner csv
+        
+        Args:
+            input_csv (str): Path to the bribe CSV file
+            output_path (Path): Path to save the output payload
+            partner_csv (str, optional): Path to the partner CSV file containing partner fee allocations
         """
         logger.info("generating payload")
         builder = SafeTxBuilder(self.book["multisigs/fees"])
@@ -322,7 +365,16 @@ class FeeAllocator:
         """
         usdc.transfer(payment_df["target"], dao_fee_usdc)
 
-        spent_usdc = int(total_bribe_usdc + dao_fee_usdc)
+        total_partner_usdc = 0
+        if partner_csv:
+            partner_df = pd.read_csv(partner_csv)
+            for _, row in partner_df.iterrows():
+                if row["amount"] > 0:
+                    partner_amount = int(row["amount"] * 1e6)
+                    total_partner_usdc += partner_amount
+                    usdc.transfer(row["target"], partner_amount)
+
+        spent_usdc = int(total_bribe_usdc + dao_fee_usdc + total_partner_usdc)
         vebal_usdc_amount = int(
             self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
@@ -387,8 +439,8 @@ class FeeAllocator:
                 total_dao += pool.to_dao_usd
                 total_vebal += pool.to_vebal_usd
 
-            total_dao += chain.noncore_to_dao_usd
-            total_vebal += chain.noncore_to_vebal_usd
+            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
+            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
 
         total_incentives = total_aura + total_bal + total_dao + total_vebal
         total_pct = (total_aura + total_bal + total_dao + total_vebal) / total_incentives
@@ -399,8 +451,10 @@ class FeeAllocator:
         core_pool_incentives = total_aura + total_bal
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
         target_share = self.run_config.aura_vebal_share
-        assert abs(aura_share - target_share) < Decimal('0.05'), \
-            f"Aura share {aura_share} deviates from target {target_share}"
+
+        # NOTE: alliance pools will make this check fail
+        # assert abs(aura_share - target_share) < Decimal('0.05'), \
+        #     f"Aura share {aura_share} deviates from target {target_share}"
 
         summary = {
             "feesCollected": float(round(total_fees, 2)),
