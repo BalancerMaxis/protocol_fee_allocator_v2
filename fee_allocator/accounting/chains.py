@@ -135,10 +135,6 @@ class CorePoolRunConfig:
 
         for chain in self.all_chains:
             chain.core_pools = [PoolFee(data, chain) for data in chain.pool_fee_data]
-            from rich.console import Console
-            console = Console()
-            console.print(chain.core_pools)
-
 
     @property
     def all_chains(self) -> List[CorePoolChain]:
