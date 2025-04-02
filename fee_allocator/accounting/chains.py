@@ -278,11 +278,10 @@ class CorePoolChain(AbstractCorePoolChain):
             for pool_id, label in v3_pools:
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
                 alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
-                if alliance_pool:
-                    if alliance_pool.pool_type != "core":
-                        self.alliance_noncore_fee_data.append(pool_fee_data)
-                    else:
-                        pools_data.append(pool_fee_data)
+                if alliance_pool and alliance_pool.pool_type != "core":
+                    self.alliance_noncore_fee_data.append(pool_fee_data)
+                else:
+                    pools_data.append(pool_fee_data)
 
         # process v2 pools
         elif self.chains.protocol_version == "v2":
@@ -294,11 +293,10 @@ class CorePoolChain(AbstractCorePoolChain):
                 if pool_id in alliance_pool_ids or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
                     alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
-                    if alliance_pool:
-                        if alliance_pool.pool_type != "core":
-                            self.alliance_noncore_fee_data.append(pool_fee_data)
-                        else:
-                            pools_data.append(pool_fee_data)
+                    if alliance_pool and alliance_pool.pool_type != "core":
+                        self.alliance_noncore_fee_data.append(pool_fee_data)
+                    else:
+                        pools_data.append(pool_fee_data)
 
         return pools_data
 
