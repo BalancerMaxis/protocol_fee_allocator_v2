@@ -131,9 +131,13 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     def _to_aura_incentives_usd(self) -> Decimal:
+        if self.is_alliance_pool:
+            return self.total_to_incentives_usd
         return self.total_to_incentives_usd * self.chain.chains.aura_vebal_share
 
     def _to_bal_incentives_usd(self) -> Decimal:
+        if self.is_alliance_pool:
+            return Decimal(0)
         return self.total_to_incentives_usd * (1 - self.chain.chains.aura_vebal_share)
 
     def _to_dao_usd(self) -> Decimal:

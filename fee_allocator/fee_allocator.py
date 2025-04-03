@@ -112,8 +112,8 @@ class FeeAllocator:
                 total = total_fees_to_redistribute * weight
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total
-                pool.to_aura_incentives_usd += total * self.run_config.aura_vebal_share
-                pool.to_bal_incentives_usd += total * (1 - self.run_config.aura_vebal_share)
+                pool.to_aura_incentives_usd += total if pool.is_alliance_pool else total * self.run_config.aura_vebal_share
+                pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_pool else total * (1 - self.run_config.aura_vebal_share)
 
             # for pool in chain.core_pools:
             #     pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
