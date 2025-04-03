@@ -224,12 +224,31 @@ class CorePoolChain(AbstractCorePoolChain):
         filename = f"{self.name}_{self.chains.protocol_version}_{self.chains.date_range[0]}_{self.chains.date_range[1]}.joblib"
         return self.chains.cache_dir / filename
 
+    def _init_alliance_pools(self) -> None:
+        """
+        Initialize alliance pools for the current chain
+        """
+        self.alliance_pools = [
+            pool
+            for member in self.chains.alliance_config.alliance_members
+            for pool in member.pools
+            if pool.network == self.name and pool.active
+        ]
+
     def _load_core_pools_from_cache(self) -> list[PoolFeeData]:
         logger.info(f"loading core pools from cache for {self.name}")
-        return joblib.load(self._cache_file_path())
+        cached_data = joblib.load(self._cache_file_path())
+        self.alliance_pools = cached_data.get('alliance_pools', [])
+        self.alliance_noncore_fee_data = cached_data.get('alliance_noncore_fee_data', [])
+        return cached_data.get('pool_fee_data', [])
 
     def _save_core_pools_to_cache(self, pool_data: list[PoolFeeData]) -> None:
-        joblib.dump(pool_data, self._cache_file_path())
+        cache_data = {
+            'pool_fee_data': pool_data,
+            'alliance_pools': self.alliance_pools,
+            'alliance_noncore_fee_data': self.alliance_noncore_fee_data
+        }
+        joblib.dump(cache_data, self._cache_file_path())
 
     def _fetch_and_process_pool_fee_data(self) -> list[PoolFeeData]:
         """
@@ -258,13 +277,8 @@ class CorePoolChain(AbstractCorePoolChain):
             else self.bal_pools_gauges.core_pools
         )
 
-        self.alliance_pools = [
-            pool
-            for member in self.chains.alliance_config.alliance_members
-            for pool in member.pools
-            if pool.network == self.name and pool.active
-        ]
- 
+        self._init_alliance_pools()
+
         alliance_pool_ids = {pool.pool_id for pool in self.alliance_pools}
         alliance_pool_tuples = [(pool.pool_id, pool.partner) for pool in self.alliance_pools]
 

@@ -254,6 +254,7 @@ class FeeAllocator:
                         ),
                         "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
+                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools),
                     },
                 )
 
