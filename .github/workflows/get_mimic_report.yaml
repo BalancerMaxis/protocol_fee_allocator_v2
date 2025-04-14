@@ -42,6 +42,7 @@ jobs:
             Checks before merging:
             - [ ] assert total wei of the json == [wei onchain](https://etherscan.io/token/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48?a=0x7c68c42de679ffb0f16216154c996c354cf1161b)
             - [ ] all active chains present
+            - [ ] v3 fees are uploaded (v3_fees_{start_date}_{end_date}.json)
           branch: gha-mimic-fees
           branch-suffix: timestamp
           delete-branch: true
