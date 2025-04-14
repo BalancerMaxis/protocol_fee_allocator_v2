@@ -49,3 +49,4 @@ if __name__ == "__main__":
             "w",
         ) as f:
             json.dump(report, f, indent=2)
+
