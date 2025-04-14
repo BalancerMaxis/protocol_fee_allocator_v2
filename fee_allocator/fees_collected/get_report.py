@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
         report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
         with open(
-            f"fee_allocator/fees_collected/fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
+            f"fee_allocator/fees_collected/v2_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
             "w",
         ) as f:
             json.dump(report, f, indent=2)
