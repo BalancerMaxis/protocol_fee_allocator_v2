@@ -276,11 +276,11 @@ class FeeAllocator:
         return output_path
 
     def generate_bribe_payload(
-        self, input_csv: str, output_path: Path = Path("fee_allocator/payloads")
+        self,
+        input_csv: str,
+        output_path: Path = Path("fee_allocator/payloads"),
     ) -> Path:
-        """
-        builds a safe payload from the bribe csv
-        """
+        """builds a safe payload from the bribe csv"""
         logger.info("generating payload")
         builder = SafeTxBuilder(self.book["multisigs/fees"])
         usdc = SafeContract(self.book["tokens/USDC"], abi_file_path=f"{base_dir}/abi/ERC20.json")
@@ -301,9 +301,7 @@ class FeeAllocator:
         total_bribe_usdc = sum(bribe_df["amount"]) * 1e6
         dao_fee_usdc = int(payment_df["amount"] * 1e6)
 
-        """
-        bribe txs
-        """
+        """bribe txs"""
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc)
 
         for _, row in bribe_df.iterrows():
@@ -317,18 +315,45 @@ class FeeAllocator:
             elif row["platform"] == "aura":
                 aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
 
-        """
-        transfer txs
-        """
+        """transfer txs"""
         usdc.transfer(payment_df["target"], dao_fee_usdc)
 
-        spent_usdc = int(total_bribe_usdc + dao_fee_usdc)
+        datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+
+        if self.run_config.protocol_version == "v2":
+            output_path = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
+            builder.output_payload(output_path)
+            return output_path
+
+        v2_file = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
+        
+        if not v2_file.exists():
+            raise FileNotFoundError(f"V2 payload not found at {v2_file}. Run V2 allocation first.")
+        
+        with open(v2_file) as f:
+            v2_payload = json.load(f)
+        
+        v2_usdc_spent = 0
+        for tx in v2_payload["transactions"]:
+            if tx["to"].lower() == self.book["tokens/USDC"].lower():
+                if tx["contractMethod"]["name"] == "transfer":
+                    v2_usdc_spent += int(tx["contractInputsValues"]["_value"])
+            elif tx["to"].lower() in [
+                self.book["hidden_hand2/balancer_briber"].lower(),
+                self.book["hidden_hand2/aura_briber"].lower()
+            ]:
+                # depositBribe calls
+                if tx["contractMethod"]["name"] == "depositBribe":
+                    if tx["contractInputsValues"]["_token"].lower() == self.book["tokens/USDC"].lower():
+                        v2_usdc_spent += int(tx["contractInputsValues"]["_amount"])
+
+        total_usdc_spent = v2_usdc_spent + total_bribe_usdc + dao_fee_usdc
         vebal_usdc_amount = int(
             self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
-            - spent_usdc
-            - 1
+            - total_usdc_spent
+            - 1  # Buffer
         )
 
         vebal_bal_amount = (
@@ -337,17 +362,15 @@ class FeeAllocator:
             .call()
         )
 
-        usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
-        bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
+        if vebal_usdc_amount > 0:
+            usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
+        if vebal_bal_amount > 0:
+            bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
 
-        datetime_file_header = datetime.datetime.fromtimestamp(
-            self.date_range[1]
-        ).date()
-
-        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_{datetime_file_header}.json"
-        output_path.parent.mkdir(exist_ok=True)
+        # Save combined payload (V2 + V3 + final transfers)
+        output_path = PROJECT_ROOT / output_path / f"v3_{datetime_file_header}.json"
         builder.output_payload(output_path)
-
+        
         return output_path
 
     @staticmethod

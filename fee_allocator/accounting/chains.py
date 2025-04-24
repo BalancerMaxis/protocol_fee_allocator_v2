@@ -11,7 +11,7 @@ from bal_tools import Subgraph, BalPoolsGauges, Web3RpcByChain
 import joblib
 from bal_tools.subgraph import DateRange
 from bal_tools.models import PoolSnapshot, Pool
-from bal_tools.errors import NoResultError
+from bal_tools.errors import NoResultError, NoPricesFoundError
 from bal_addresses import AddrBook
 
 from fee_allocator.accounting.core_pools import PoolFee, PoolFeeData
@@ -200,7 +200,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
     def set_pool_fee_data(self):
         """
-        sets the `pool_fee_data` for the chain
+        sets list of `PoolFeeData` for the chain
         fetches from subgraph if not cached
         """
         if self.chains.use_cache and self._cache_file_path().exists():
@@ -256,7 +256,8 @@ class CorePoolChain(AbstractCorePoolChain):
             v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
             for pool_id, label in v3_pools:
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
-                pools_data.append(pool_fee_data)
+                if pool_fee_data:
+                    pools_data.append(pool_fee_data)
 
         elif self.chains.protocol_version == "v2":
             v2_pools = [(p, l) for p, l in core_pools_list if len(p) != 42]
@@ -337,17 +338,20 @@ class CorePoolChain(AbstractCorePoolChain):
         except NoResultError:
             last_join_exit_ts = 0
 
-        return PoolFeeData(
-            pool_id=pool_id,
-            address=pool_id,
-            symbol=label,
-            tokens_price=None,
-            gauge_address=pool_to_gauge[pool_id],
-            start_pool_snapshot=None,
-            end_pool_snapshot=None,
-            last_join_exit_ts=last_join_exit_ts,
-            total_earned_fees_usd_twap=self.subgraph.get_v3_protocol_fees(pool_id, self.name, self.chains.date_range),
-        )
+        try:
+            return PoolFeeData(
+                pool_id=pool_id,
+                address=pool_id,
+                symbol=label,
+                tokens_price=None,
+                gauge_address=pool_to_gauge[pool_id],
+                start_pool_snapshot=None,
+                end_pool_snapshot=None,
+                last_join_exit_ts=last_join_exit_ts,
+                total_earned_fees_usd_twap=self.subgraph.get_v3_protocol_fees(pool_id, self.name, self.chains.date_range),
+            )
+        except NoPricesFoundError:
+            return None
 
     @staticmethod
     def _get_latest_snapshot(
@@ -373,10 +377,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
     @property
     def noncore_fees_collected(self) -> Decimal:
-        if not self.core_pools:
-            raise ValueError("core pools not set")
-        total_core_fees = sum(pool.total_earned_fees_usd_twap for pool in self.core_pools)
-        return max(self.fees_collected - total_core_fees, Decimal(0))
+        return max(self.fees_collected - self.total_earned_fees_usd_twap, Decimal(0))
 
     @property
     def noncore_to_dao_usd(self) -> Decimal:
@@ -385,3 +386,7 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     def noncore_to_vebal_usd(self) -> Decimal:
         return self.noncore_fees_collected * self.chains.fee_config.noncore_vebal_share_pct
+
+    @property
+    def total_fees_earned(self) -> Decimal:
+        return self.total_earned_fees_usd_twap + self.noncore_fees_collected
