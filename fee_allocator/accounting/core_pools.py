@@ -41,7 +41,7 @@ class PoolFeeData:
     def __post_init__(self):
         if len(self.pool_id) == 42:
             # v3 pool; earned fees already calculated
-            if  self.total_earned_fees_usd_twap is None:
+            if self.total_earned_fees_usd_twap is None:
                 raise ValueError(f"v3 pool {self.pool_id} must have total_earned_fees_usd_twap set. got {self.total_earned_fees_usd_twap}")
         else:
             # v2 pool
@@ -55,7 +55,7 @@ class PoolFeeData:
         if bpt_fee > 0:
             return self.bpt_price * bpt_fee
 
-        return sum(
+        return Decimal(sum(
             token.twap_price * Decimal(end_token.paidProtocolFees - start_token.paidProtocolFees)
             for end_token, start_token, token in zip(
                 self.end_pool_snapshot.tokens,
@@ -63,7 +63,7 @@ class PoolFeeData:
                 self.tokens_price
             )
             if end_token.paidProtocolFees > start_token.paidProtocolFees
-        )
+        ))
 
 
 class PoolFee(AbstractPoolFee, PoolFeeData):

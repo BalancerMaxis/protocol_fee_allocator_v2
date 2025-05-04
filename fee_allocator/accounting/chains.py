@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import os
@@ -23,10 +23,9 @@ from fee_allocator.accounting.models import (
 )
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
-    CORE_POOLS_URL,
     REROUTE_CONFIG_URL,
 )
-from fee_allocator.accounting.decorators import round
+from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
 from fee_allocator.utils import get_block_by_ts
 
@@ -85,8 +84,8 @@ class CorePoolRunConfig:
         iterate over each chain in `input_fees` and fetch that chain's core pool data
         only chains that have core pools are initialized, else the fees are redistributed to other chains
         """
-        _chains = {}
-        unallocated_fees = {}
+        _chains: dict[str, CorePoolChain] = {}
+        unallocated_fees: dict[str, Decimal] = {}
 
         for chain_name, fees in self.input_fees.items():
             chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
@@ -266,7 +265,8 @@ class CorePoolChain(AbstractCorePoolChain):
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
                 if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
-                    pools_data.append(pool_fee_data)
+                    if pool_fee_data:
+                        pools_data.append(pool_fee_data)
 
         return pools_data
 
@@ -300,14 +300,16 @@ class CorePoolChain(AbstractCorePoolChain):
         pool_to_gauge: Dict[str, str],
         start_snap: PoolSnapshot,
         end_snap: PoolSnapshot,
-    ) -> PoolFeeData:
+    ) -> Optional[PoolFeeData]:
         logger.info(f"fetching twap prices for {label} on {self.name}")
-        prices = self.subgraph.get_twap_price_pool(
-            pool_id,
-            self.name,
-            self.chains.date_range,
-        )
-
+        try:
+            prices = self.subgraph.get_twap_price_pool(
+                pool_id,
+                self.name,
+                self.chains.date_range,
+            )
+        except NoPricesFoundError:
+            return None
         try:
             last_join_exit_ts = self.bal_pools_gauges.get_last_join_exit(pool_id)
         except NoResultError:
@@ -324,13 +326,14 @@ class CorePoolChain(AbstractCorePoolChain):
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
         )
+       
     
     def _fetch_twap_prices_and_init_pool_fee_data_v3(
         self,
         pool_id: str,
         label: str,
         pool_to_gauge: Dict[str, str],
-    ) -> PoolFeeData:
+    ) -> Optional[PoolFeeData]:
         logger.info(f"fetching twap prices for {label} on {self.name}")
 
         try:
@@ -370,23 +373,28 @@ class CorePoolChain(AbstractCorePoolChain):
         )
 
     @property
+    @require_pool_fee_data
     def total_earned_fees_usd_twap(self) -> Decimal:
         return sum(
             [pool_data.total_earned_fees_usd_twap for pool_data in self.pool_fee_data]
         )
 
     @property
+    @require_pool_fee_data
     def noncore_fees_collected(self) -> Decimal:
         return max(self.fees_collected - self.total_earned_fees_usd_twap, Decimal(0))
 
     @property
+    @require_pool_fee_data
     def noncore_to_dao_usd(self) -> Decimal:
         return self.noncore_fees_collected * self.chains.fee_config.noncore_dao_share_pct
 
     @property
+    @require_pool_fee_data
     def noncore_to_vebal_usd(self) -> Decimal:
         return self.noncore_fees_collected * self.chains.fee_config.noncore_vebal_share_pct
 
     @property
+    @require_pool_fee_data
     def total_fees_earned(self) -> Decimal:
         return self.total_earned_fees_usd_twap + self.noncore_fees_collected
