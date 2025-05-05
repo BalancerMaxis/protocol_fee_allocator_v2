@@ -51,6 +51,7 @@ def main() -> None:
     fee_allocator.generate_incentives_csv()
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_bribe_payload(file_name)
+    fee_allocator.generate_noncore_csv()
 
 
 if __name__ == "__main__":

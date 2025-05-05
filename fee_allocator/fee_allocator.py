@@ -275,6 +275,35 @@ class FeeAllocator:
 
         return output_path
 
+    def generate_noncore_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/noncore")
+    ) -> Path:
+        logger.info("generating noncore fee allocation csv")
+        output = []
+        
+        for chain in self.run_config.all_chains:
+            output.append({
+                "chain": chain.name,
+                "total_fees_collected": round(chain.fees_collected, 4),
+                "core_pool_fees": round(chain.total_earned_fees_usd_twap, 4),
+                "noncore_fees": round(chain.noncore_fees_collected, 4),
+                "noncore_to_dao": round(chain.noncore_to_dao_usd, 4),
+                "noncore_to_vebal": round(chain.noncore_to_vebal_usd, 4),
+                "dao_share_pct": round(self.run_config.fee_config.noncore_dao_share_pct * 100, 2),
+                "vebal_share_pct": round(self.run_config.fee_config.noncore_vebal_share_pct * 100, 2)
+            })
+            
+        df = pd.DataFrame(output)
+        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
+        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        output_path = (
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_noncore_{start_date}_{end_date}.csv"
+        )
+        output_path.parent.mkdir(exist_ok=True)
+        
+        df.to_csv(output_path, index=False)
+        return output_path
+
     def generate_bribe_payload(
         self,
         input_csv: str,
