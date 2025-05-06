@@ -10,6 +10,7 @@ from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
 import json
+import math
 
 from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
 from fee_allocator.accounting.core_pools import PoolFee
@@ -327,11 +328,11 @@ class FeeAllocator:
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
 
-        total_bribe_usdc = sum(bribe_df["amount"]) * 1e6
+        total_bribe_usdc = sum(int(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
         dao_fee_usdc = int(payment_df["amount"] * 1e6)
 
         """bribe txs"""
-        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc)
+        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
 
         for _, row in bribe_df.iterrows():
             if int(row["amount"]) == 0:
