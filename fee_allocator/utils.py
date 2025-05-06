@@ -99,7 +99,7 @@ def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
         return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
 
 def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None, protocol_version: str = "v2") -> dict:
-    # If fees_file_name is provided, use that directly
+    # If fees_file_name is provided, use that directly, else derive it from the start and end date
     if fees_file_name:
         filename = fees_file_name
     else:
@@ -109,12 +109,5 @@ def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = N
     if os.path.exists(local_path):
         with open(local_path) as f:
             return json.load(f)
-            
-    v1_fees = f"https://raw.githubusercontent.com/BalancerMaxis/protocol_fee_allocator/main/fee_allocator/fees_collected/{filename}"
-    response = requests.get(v1_fees)
-    
-    if response.status_code == 200:
-        print(f"fetched collected fees from: {v1_fees}")
-        return response.json()
-        
-    raise FileNotFoundError(f"Could not find fees file {filename} locally or remotely")
+
+    raise FileNotFoundError(f"Could not find fees file {filename}")
