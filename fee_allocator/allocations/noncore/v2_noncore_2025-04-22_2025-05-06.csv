@@ -1,0 +1,2 @@
+chain,total_fees_collected,core_pool_fees,noncore_fees,noncore_to_dao,noncore_to_vebal,dao_share_pct,vebal_share_pct
+mainnet,1000000.0000,47081.3127,952918.6873,166760.7703,786157.9170,17.50,82.50
