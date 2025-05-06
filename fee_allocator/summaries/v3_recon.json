@@ -15,5 +15,22 @@
     "createdAt": 1745598823,
     "periodStart": 1744243200,
     "periodEnd": 1745452800
+  },
+  {
+    "feesCollected": 1000000.0,
+    "incentivesDistributed": 1000000.0,
+    "feesNotDistributed": 0.0,
+    "auraIncentives": 36459.41,
+    "balIncentives": 17220.2,
+    "feesToDao": 175000.0,
+    "feesToVebal": 771320.39,
+    "auravebalShare": 0.68,
+    "auraIncentivesPct": 0.0365,
+    "balIncentivesPct": 0.0172,
+    "feesToDaoPct": 0.175,
+    "feesToVebalPct": 0.7713,
+    "createdAt": 1746560508,
+    "periodStart": 1745280000,
+    "periodEnd": 1746489600
   }
 ]
