@@ -9,7 +9,7 @@ on:
         type: string
   push:
     branches:
-      - test-workflow
+      - biweekly-runs
     paths:
       - "fee_allocator/fees_collected/*.json"
 
