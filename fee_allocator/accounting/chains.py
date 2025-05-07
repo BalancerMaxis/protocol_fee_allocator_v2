@@ -185,7 +185,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
-        self.bal_pools_gauges = BalPoolsGauges(self.name, use_cached_core_pools=False)
+        self.bal_pools_gauges = BalPoolsGauges(self.name, use_cached_core_pools=True)
 
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
