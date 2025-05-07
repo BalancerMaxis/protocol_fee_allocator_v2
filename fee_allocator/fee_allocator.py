@@ -286,7 +286,7 @@ class FeeAllocator:
             output.append({
                 "chain": chain.name,
                 "total_fees_collected": round(chain.fees_collected, 4),
-                "core_pool_fees": round(chain.total_earned_fees_usd_twap, 4),
+                "total_fees_earned_twap": round(chain.total_earned_fees_usd_twap, 4),
                 "noncore_fees": round(chain.noncore_fees_collected, 4),
                 "noncore_to_dao": round(chain.noncore_to_dao_usd, 4),
                 "noncore_to_vebal": round(chain.noncore_to_vebal_usd, 4),
