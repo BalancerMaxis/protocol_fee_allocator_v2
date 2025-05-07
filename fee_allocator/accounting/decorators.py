@@ -1,5 +1,6 @@
 from functools import wraps
 from decimal import Decimal
+from fee_allocator.logger import logger
 
 
 def return_zero_if_dust(threshold=Decimal("1E-20"), any_or_all="any"):
@@ -54,3 +55,18 @@ def round(decimals):
         return wrapper
 
     return decorator
+
+
+def require_pool_fee_data(func):
+    """
+    Ensures that pool_fee_data is set before accessing properties that depend on it.
+    If pool_fee_data is None, calls set_pool_fee_data() to initialize it.
+    """
+    @wraps(func)
+    def wrapper(self):
+        if self.pool_fee_data is None:
+            logger.info(f"Initializing pool_fee_data for {self.name} before accessing {func.__name__}")
+            self.set_pool_fee_data()
+            logger.info(f"Successfully initialized pool_fee_data for {self.name}")
+        return func(self)
+    return wrapper

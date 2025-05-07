@@ -21,6 +21,7 @@ def get_report(start_date, end_date):
         },
     )
     response.raise_for_status()
+    # breakpoint()
     report = response.json()["depositors"]
     total = 0
     for chain, amount in report.items():
@@ -42,9 +43,18 @@ if __name__ == "__main__":
         yesterday = today - timedelta(days=1)
         epoch_start = today - timedelta(days=14)
 
-        report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
+        v2_report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
+
         with open(
             f"fee_allocator/fees_collected/v2_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
             "w",
         ) as f:
-            json.dump(report, f, indent=2)
+            json.dump(v2_report, f, indent=2)
+
+        with open(
+            f"fee_allocator/fees_collected/v3_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
+            "w",
+        ) as f:
+            empty_v3_fees = {chain: 0 for chain in v2_report.keys()}
+            json.dump(empty_v3_fees, f, indent=2)
+

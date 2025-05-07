@@ -18,6 +18,7 @@ parser.add_argument(
     "--output_file_name", help="Output file name", type=str, required=False
 )
 parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
+parser.add_argument("--protocol_version", help="Protocol version (v2 or v3)", type=str, choices=["v2", "v3"], default="v2")
 
 ROOT = os.path.dirname(__file__)
 
@@ -39,21 +40,18 @@ def main() -> None:
     start_date = datetime.fromtimestamp(ts_in_the_past, tz=pytz.UTC).strftime("%Y-%m-%d")
     end_date = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")
 
-    input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name)
+    input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name, args.protocol_version)
     date_range = (ts_in_the_past, ts_now)
 
-    fee_allocator = FeeAllocator(input_fees, date_range)
+    fee_allocator = FeeAllocator(input_fees, date_range, protocol_version=args.protocol_version)
 
-    fee_allocator.run_config.set_core_pool_chains_data()
-    fee_allocator.run_config.set_aura_vebal_share()
-    fee_allocator.run_config.set_initial_pool_allocation()
-
-    fee_allocator.redistribute_fees()
+    fee_allocator.allocate()
     fee_allocator.recon()
 
     fee_allocator.generate_incentives_csv()
     file_name = fee_allocator.generate_bribe_csv()
     fee_allocator.generate_bribe_payload(file_name)
+    fee_allocator.generate_noncore_csv()
 
 
 if __name__ == "__main__":

@@ -1,9 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from web3 import Web3
 from typing import List, Dict, TYPE_CHECKING
 from decimal import Decimal
-from datetime import datetime
 
 from bal_tools.models import PoolSnapshot, TWAPResult
 from fee_allocator.accounting.interfaces import AbstractPoolFee
@@ -28,58 +26,46 @@ class PoolFeeData:
         start_pool_snapshot (PoolSnapshot): The pool snapshot at the start of the period.
         end_pool_snapshot (PoolSnapshot): The pool snapshot at the end of the period.
         last_join_exit_ts (int): The timestamp of the last join or exit event for the pool.
+        protocol_version (int): The protocol version of the pool (2 or 3).
     """
     pool_id: str
     address: str
     symbol: str
-    bpt_price: Decimal
     tokens_price: List[TWAPResult]
     gauge_address: str
     start_pool_snapshot: PoolSnapshot
     end_pool_snapshot: PoolSnapshot
     last_join_exit_ts: int
-
-    earned_bpt_fee: Decimal = field(init=False)
-    earned_bpt_fee_usd_twap: Decimal = field(init=False)
-    earned_tokens_fee: Dict[str, Decimal] = field(init=False)
-    earned_tokens_fee_usd_twap: Decimal = field(init=False)
-    total_earned_fees_usd_twap: Decimal = field(init=False)
+    protocol_version: int
+    bpt_price: Decimal = field(default=Decimal(0))
+    total_earned_fees_usd_twap: Decimal = None
 
     def __post_init__(self):
-        self.earned_bpt_fee = self._set_earned_bpt_fee()
-        self.earned_bpt_fee_usd_twap = self._set_earned_bpt_fee_usd_twap()
-        self.earned_tokens_fee = self._set_earned_tokens_fee()
-        self.earned_tokens_fee_usd_twap = self._set_earned_tokens_fee_usd_twap()
-        self.total_earned_fees_usd_twap = self._set_total_earned_fees_usd_twap()
+        if self.protocol_version == 3:
+            if self.total_earned_fees_usd_twap is None:
+                raise ValueError(f"v3 pool {self.pool_id} must have total_earned_fees_usd_twap set. got {self.total_earned_fees_usd_twap}")
+        elif self.protocol_version == 2:
+            self.total_earned_fees_usd_twap = self._set_total_earned_fees_usd_twap_v2()
+        else:
+            raise ValueError(f"Invalid protocol version {self.protocol_version} for pool {self.pool_id}")
 
-    def _set_earned_bpt_fee(self) -> Decimal:
-        return (
+    def _set_total_earned_fees_usd_twap_v2(self) -> Decimal:
+        bpt_fee = (
             self.end_pool_snapshot.totalProtocolFeePaidInBPT
             - self.start_pool_snapshot.totalProtocolFeePaidInBPT
         )
+        if bpt_fee > 0:
+            return self.bpt_price * bpt_fee
 
-    def _set_earned_bpt_fee_usd_twap(self) -> Decimal:
-        return self.bpt_price * self.earned_bpt_fee
-
-    def _set_earned_tokens_fee(self) -> Dict[str, Decimal]:
-        return {
-            end_token.address: Decimal(
-                end_token.paidProtocolFees - start_token.paidProtocolFees
+        return Decimal(sum(
+            token.twap_price * Decimal(end_token.paidProtocolFees - start_token.paidProtocolFees)
+            for end_token, start_token, token in zip(
+                self.end_pool_snapshot.tokens,
+                self.start_pool_snapshot.tokens,
+                self.tokens_price
             )
-            for start_token, end_token in zip(
-                self.start_pool_snapshot.tokens, self.end_pool_snapshot.tokens
-            )
-        }
-
-    def _set_earned_tokens_fee_usd_twap(self) -> Decimal:
-        return sum(
-            token.twap_price * fee
-            for fee, token in zip(self.earned_tokens_fee.values(), self.tokens_price)
-            if fee > 0
-        )
-
-    def _set_total_earned_fees_usd_twap(self) -> Decimal:
-        return self.earned_bpt_fee_usd_twap + self.earned_tokens_fee_usd_twap
+            if end_token.paidProtocolFees > start_token.paidProtocolFees
+        ))
 
 
 class PoolFee(AbstractPoolFee, PoolFeeData):
@@ -113,12 +99,15 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
             return Decimal(0)
         return self.total_earned_fees_usd_twap / self.chain.total_earned_fees_usd_twap
 
+    def _core_pool_allocation(self) -> Decimal:
+        if self.chain.total_earned_fees_usd_twap == 0:
+            return Decimal(0)
+        core_share = self.chain.total_earned_fees_usd_twap / self.chain.total_fees_earned
+        return self.chain.fees_collected * core_share
+
     def _total_to_incentives_usd(self) -> Decimal:
-        to_distribute_to_incentives = self.chain.fees_collected * (
-            1
-            - self.chain.chains.fee_config.dao_share_pct
-            - self.chain.chains.fee_config.vebal_share_pct
-        )
+        core_fees = self._core_pool_allocation()
+        to_distribute_to_incentives = core_fees * self.chain.chains.fee_config.vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     def _to_aura_incentives_usd(self) -> Decimal:
@@ -128,15 +117,17 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.total_to_incentives_usd * (1 - self.chain.chains.aura_vebal_share)
 
     def _to_dao_usd(self) -> Decimal:
+        core_fees = self._core_pool_allocation()
         return (
             self.earned_fee_share_of_chain_usd
-            * self.chain.fees_collected
+            * core_fees
             * self.chain.chains.fee_config.dao_share_pct
         )
 
     def _to_vebal_usd(self) -> Decimal:
+        core_fees = self._core_pool_allocation()
         return (
             self.earned_fee_share_of_chain_usd
-            * self.chain.fees_collected
+            * core_fees
             * self.chain.chains.fee_config.vebal_share_pct
         )

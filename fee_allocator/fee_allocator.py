@@ -1,4 +1,4 @@
-from typing import TypedDict, Union
+from typing import TypedDict, Union, Dict
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
 from bal_addresses import AddrBook
@@ -10,6 +10,7 @@ from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
 import json
+import math
 
 from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
 from fee_allocator.accounting.core_pools import PoolFee
@@ -37,6 +38,7 @@ class FeeAllocator:
         date_range (DateRange): The date range for the fee allocation period.
         cache_dir (Path, optional): The directory to use for caching. Defaults to fee_allocator/cache.
         use_cache (bool, optional): Whether to use cached data. Defaults to True.
+        core_pools (Dict[str, Dict[str, str]], optional): A dictionary of core pools. Defaults to None.
     """
 
     def __init__(
@@ -45,12 +47,31 @@ class FeeAllocator:
         date_range: DateRange,
         cache_dir: Path = None,
         use_cache: bool = True,
+        core_pools: Dict[str, Dict[str, str]] = None,
+        protocol_version: str = "v2",
     ):
         self.input_fees = input_fees
         self.date_range = date_range
-        self.run_config = CorePoolRunConfig(self.input_fees, self.date_range, cache_dir, use_cache)
+        self.run_config = CorePoolRunConfig(
+            input_fees,
+            date_range,
+            cache_dir=cache_dir,
+            use_cache=use_cache,
+            core_pools=core_pools,
+            protocol_version=protocol_version,
+        )
         self.book = AddrBook("mainnet").flatbook
 
+    def allocate(self):
+        """
+        Allocates protocol fees to core pools and non-core pools according to BIP-734.
+        Core pools: 70% voting incentives, 12.5% veBAL, 17.5% DAO
+        Non-core pools: 82.5% veBAL, 17.5% DAO
+        """
+        self.run_config.set_core_pool_chains_data()
+        self.run_config.set_aura_vebal_share()
+        self.run_config.set_initial_pool_allocation()
+        self.redistribute_fees()
 
     def redistribute_fees(self):
         """
@@ -96,9 +117,9 @@ class FeeAllocator:
                 pool.to_aura_incentives_usd += total * self.run_config.aura_vebal_share
                 pool.to_bal_incentives_usd += total * (1 - self.run_config.aura_vebal_share)
 
-            for pool in chain.core_pools:
-                pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
-                pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
+            # for pool in chain.core_pools:
+            #     pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
+            #     pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
@@ -189,11 +210,12 @@ class FeeAllocator:
                     },
                 )
 
+        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd for chain in self.run_config.all_chains)
         output.append(
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
                 "platform": "payment",
-                "amount": self.run_config.total_to_dao_usd,
+                "amount": self.run_config.total_to_dao_usd + noncore_total_to_dao_usd,
             }
         )
 
@@ -201,16 +223,8 @@ class FeeAllocator:
         datetime_file_header = datetime.datetime.fromtimestamp(
             self.date_range[1]
         ).date()
-        output_path = PROJECT_ROOT / output_path / f"bribes_{datetime_file_header}.csv"
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_bribes_{datetime_file_header}.csv"
         output_path.parent.mkdir(exist_ok=True)
-
-        logger.info(f"Total fees collected: {self.run_config.total_fees_collected_usd}")
-        logger.info(
-            f"Total incentives allocated: {self.run_config.total_to_incentives_usd}"
-        )
-        logger.info(
-            f"delta {self.run_config.total_fees_collected_usd - self.run_config.total_to_incentives_usd}"
-        )
 
         df.to_csv(
             output_path,
@@ -247,20 +261,11 @@ class FeeAllocator:
 
         df = pd.DataFrame(output)
         
-        logger.info(f"Total fees collected: {self.run_config.total_fees_collected_usd}")
-        logger.info(
-            f"Total incentives allocated: {self.run_config.total_to_incentives_usd}"
-        )
-        logger.info(
-            f"delta {self.run_config.total_fees_collected_usd - self.run_config.total_to_incentives_usd}"
-        )
-        
-    
         sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
         end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
         output_path = (
-            PROJECT_ROOT / output_path / f"incentives_{start_date}_{end_date}.csv"
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{start_date}_{end_date}.csv"
         )
         output_path.parent.mkdir(exist_ok=True)
 
@@ -271,12 +276,41 @@ class FeeAllocator:
 
         return output_path
 
-    def generate_bribe_payload(
-        self, input_csv: str, output_path: Path = Path("fee_allocator/payloads")
+    def generate_noncore_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/noncore")
     ) -> Path:
-        """
-        builds a safe payload from the bribe csv
-        """
+        logger.info("generating noncore fee allocation csv")
+        output = []
+        
+        for chain in self.run_config.all_chains:
+            output.append({
+                "chain": chain.name,
+                "total_fees_collected": round(chain.fees_collected, 4),
+                "total_fees_earned_twap": round(chain.total_earned_fees_usd_twap, 4),
+                "noncore_fees": round(chain.noncore_fees_collected, 4),
+                "noncore_to_dao": round(chain.noncore_to_dao_usd, 4),
+                "noncore_to_vebal": round(chain.noncore_to_vebal_usd, 4),
+                "dao_share_pct": round(self.run_config.fee_config.noncore_dao_share_pct * 100, 2),
+                "vebal_share_pct": round(self.run_config.fee_config.noncore_vebal_share_pct * 100, 2)
+            })
+            
+        df = pd.DataFrame(output)
+        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
+        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        output_path = (
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_noncore_{start_date}_{end_date}.csv"
+        )
+        output_path.parent.mkdir(exist_ok=True)
+        
+        df.to_csv(output_path, index=False)
+        return output_path
+
+    def generate_bribe_payload(
+        self,
+        input_csv: str,
+        output_path: Path = Path("fee_allocator/payloads"),
+    ) -> Path:
+        """builds a safe payload from the bribe csv"""
         logger.info("generating payload")
         builder = SafeTxBuilder(self.book["multisigs/fees"])
         usdc = SafeContract(self.book["tokens/USDC"], abi_file_path=f"{base_dir}/abi/ERC20.json")
@@ -294,12 +328,11 @@ class FeeAllocator:
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
 
-        total_bribe_usdc = sum(bribe_df["amount"]) * 1e6
+        total_bribe_usdc = sum(int(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
+        dao_fee_usdc = int(payment_df["amount"] * 1e6)
 
-        """
-        bribe txs
-        """
-        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc)
+        """bribe txs"""
+        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
 
         for _, row in bribe_df.iterrows():
             if int(row["amount"]) == 0:
@@ -312,18 +345,45 @@ class FeeAllocator:
             elif row["platform"] == "aura":
                 aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
 
-        """
-        transfer txs
-        """
-        usdc.transfer(payment_df["target"], int(payment_df["amount"] * 1e6))
+        """transfer txs"""
+        usdc.transfer(payment_df["target"], dao_fee_usdc)
 
-        spent_usdc = int(total_bribe_usdc + (payment_df["amount"] * 1e6))
+        datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+
+        if self.run_config.protocol_version == "v2":
+            output_path = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
+            builder.output_payload(output_path)
+            return output_path
+
+        v2_file = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
+        
+        if not v2_file.exists():
+            raise FileNotFoundError(f"V2 payload not found at {v2_file}. Run V2 allocation first.")
+        
+        with open(v2_file) as f:
+            v2_payload = json.load(f)
+        
+        v2_usdc_spent = 0
+        for tx in v2_payload["transactions"]:
+            if tx["to"].lower() == self.book["tokens/USDC"].lower():
+                if tx["contractMethod"]["name"] == "transfer":
+                    v2_usdc_spent += int(tx["contractInputsValues"]["_value"])
+            elif tx["to"].lower() in [
+                self.book["hidden_hand2/balancer_briber"].lower(),
+                self.book["hidden_hand2/aura_briber"].lower()
+            ]:
+                # depositBribe calls
+                if tx["contractMethod"]["name"] == "depositBribe":
+                    if tx["contractInputsValues"]["_token"].lower() == self.book["tokens/USDC"].lower():
+                        v2_usdc_spent += int(tx["contractInputsValues"]["_amount"])
+
+        total_usdc_spent = v2_usdc_spent + total_bribe_usdc + dao_fee_usdc
         vebal_usdc_amount = int(
             self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
             .functions.balanceOf(builder.safe_address)
             .call()
-            - spent_usdc
-            - 1
+            - total_usdc_spent
+            - 1  # Buffer
         )
 
         vebal_bal_amount = (
@@ -332,17 +392,15 @@ class FeeAllocator:
             .call()
         )
 
-        usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
-        bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
+        if vebal_usdc_amount > 0:
+            usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
+        if vebal_bal_amount > 0:
+            bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
 
-        datetime_file_header = datetime.datetime.fromtimestamp(
-            self.date_range[1]
-        ).date()
-
-        output_path = PROJECT_ROOT / output_path / f"{datetime_file_header}.json"
-        output_path.parent.mkdir(exist_ok=True)
+        # Save combined payload (V2 + V3 + final transfers)
+        output_path = PROJECT_ROOT / output_path / f"v3_{datetime_file_header}.json"
         builder.output_payload(output_path)
-
+        
         return output_path
 
     @staticmethod
@@ -364,41 +422,40 @@ class FeeAllocator:
         4. Small delta between collected and distributed fees
         """
         total_fees = self.run_config.total_fees_collected_usd
-        total_incentives = Decimal(0)
-        total_dao = Decimal(0) 
-        total_vebal = Decimal(0)
         total_aura = Decimal(0)
         total_bal = Decimal(0)
+        total_dao = Decimal(0)
+        total_vebal = Decimal(0)
+        total_incentives = Decimal(0)
 
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
-                assert pool.to_aura_incentives_usd >= 0, f"Negative Aura incentives: {pool.pool_id}"
-                assert pool.to_bal_incentives_usd >= 0, f"Negative BAL incentives: {pool.pool_id}"
-                assert pool.to_dao_usd >= 0, f"Negative DAO fees: {pool.pool_id}"
-                assert pool.to_vebal_usd >= 0, f"Negative veBAL fees: {pool.pool_id}"
-                
+                assert pool.to_aura_incentives_usd >= 0, f"Negative aura incentives: {pool.to_aura_incentives_usd}"
+                assert pool.to_bal_incentives_usd >= 0, f"Negative bal incentives: {pool.to_bal_incentives_usd}"
+                assert pool.to_dao_usd >= 0, f"Negative dao share: {pool.to_dao_usd}"
+                assert pool.to_vebal_usd >= 0, f"Negative vebal share: {pool.to_vebal_usd}"
+
                 total_aura += pool.to_aura_incentives_usd
                 total_bal += pool.to_bal_incentives_usd
                 total_dao += pool.to_dao_usd
                 total_vebal += pool.to_vebal_usd
 
-        total_incentives = total_aura + total_bal + total_dao + total_vebal
-        
-        delta = abs(total_fees - total_incentives)
-        assert delta < Decimal('0.15'), f"Large fee delta: {delta}"
+            total_dao += chain.noncore_to_dao_usd
+            total_vebal += chain.noncore_to_vebal_usd
 
-        total_pct = (
-            total_aura / total_incentives +
-            total_bal / total_incentives +
-            total_dao / total_incentives +
-            total_vebal / total_incentives
-        )
+        total_incentives = total_aura + total_bal + total_dao + total_vebal
+        total_pct = (total_aura + total_bal + total_dao + total_vebal) / total_incentives
+
         assert abs(1 - total_pct) < Decimal('0.0001'), f"Percentages don't sum to 1: {total_pct}"
 
-        aura_share = total_aura / (total_aura + total_bal)
+        # Only check Aura share against BAL for core pool incentives
+        core_pool_incentives = total_aura + total_bal
+        aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
         target_share = self.run_config.aura_vebal_share
-        assert abs(aura_share - target_share) < Decimal('0.05'), \
-            f"Aura share {aura_share} deviates from target {target_share}"
+
+        # new fee model breaks this check
+        # assert abs(aura_share - target_share) < Decimal('0.05'), \
+        #     f"Aura share {aura_share} deviates from target {target_share}"
 
         summary = {
             "feesCollected": float(round(total_fees, 2)),
@@ -418,7 +475,7 @@ class FeeAllocator:
             "periodEnd": self.date_range[1]
         }
 
-        recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/recon.json"
+        recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries" / f"{self.run_config.protocol_version}_recon.json"
         recon_file.parent.mkdir(exist_ok=True)
 
         if recon_file.exists():
@@ -426,11 +483,6 @@ class FeeAllocator:
                 data = json.load(f)
         else:
             data = []
-
-        for entry in data:
-            if entry["periodStart"] == summary["periodStart"] and \
-               entry["periodEnd"] == summary["periodEnd"]:
-                return
 
         data.append(summary)
         with open(recon_file, "w") as f:

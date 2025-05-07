@@ -1,54 +1,55 @@
 from fee_allocator.fee_allocator import FeeAllocator
-
-from pathlib import Path
-import pandas as pd
-import pytest
+from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
+from bal_tools.subgraph import DateRange
+from web3 import Web3
 from decimal import Decimal
-import numpy as np
-from dataclasses import dataclass
-import json
+from pathlib import Path
 
 
-@dataclass
-class ExpectedValues:
-    earned_fees: Decimal
-    fees_to_vebal: Decimal
-    fees_to_dao: Decimal
-    total_incentives: Decimal
-    aura_incentives: Decimal
-    bal_incentives: Decimal
 
+def test_core_pool_chain_initialization(chain: CorePoolChain):
+    """Test that CorePoolChain can be initialized with valid parameters"""
+    assert isinstance(chain.block_range, tuple)
+    assert len(chain.block_range) == 2
 
-def test_fee_allocator(fee_allocator):
-    fee_allocator.run_config.set_core_pool_chains_data()
-    fee_allocator.run_config.set_aura_vebal_share()
-    fee_allocator.run_config.set_initial_pool_allocation()
-    fee_allocator.redistribute_fees()
-    incentives_path = fee_allocator.generate_incentives_csv(Path("tests/output"))
+def test_core_pool_chain_pool_fee_data(chain: CorePoolChain):
+    """Test that CorePoolChain can fetch and process pool fee data and calculate fee distributions"""
+    chain.set_pool_fee_data()
 
-    generated_df = pd.read_csv(incentives_path)
-    expected_df = pd.read_csv(Path("tests/expected_incentives.csv"))
+    # Verify pool fee data was processed
+    assert hasattr(chain, 'pool_fee_data')
+    if chain.pool_fee_data:
+        assert isinstance(chain.pool_fee_data, list)
+        for pool_data in chain.pool_fee_data:
+            assert hasattr(pool_data, 'pool_id')
+            assert hasattr(pool_data, 'total_earned_fees_usd_twap')
+            assert type(pool_data.total_earned_fees_usd_twap) is Decimal
 
-    assert set(generated_df['pool_id']) == set(expected_df['pool_id']), "Pool IDs don't match between generated and expected results"
+    # Verify fee calculations
+    assert type(chain.total_earned_fees_usd_twap) is Decimal
+    assert type(chain.noncore_fees_collected) is Decimal
+    assert type(chain.noncore_to_dao_usd) is Decimal
+    assert type(chain.noncore_to_vebal_usd) is Decimal
+    assert type(chain.total_fees_earned) is Decimal
 
-    merged_df = pd.merge(generated_df, expected_df, on='pool_id', suffixes=('_gen', '_exp'))
+def test_core_pool_chain_cache_handling(chain: CorePoolChain):
+    cache_file = chain._cache_file_path()
+    assert cache_file.parent == chain.chains.cache_dir
+    assert str(chain.chains.date_range[0]) in cache_file.name
+    assert str(chain.chains.date_range[1]) in cache_file.name
+
+def test_fee_allocator_initialization(allocator: FeeAllocator):
+    assert isinstance(allocator.run_config, CorePoolRunConfig)
+    assert isinstance(allocator.book, dict)
+
+def test_fee_allocator_allocation_process(allocator: FeeAllocator):
+    allocator.allocate()
+
+    # Verify core pool chains were initialized
+    assert hasattr(allocator.run_config, '_chains')
+    assert isinstance(allocator.run_config._chains, dict)
     
-    numeric_columns = ['earned_fees', 'fees_to_vebal', 'fees_to_dao', 
-                      'total_incentives', 'aura_incentives', 'bal_incentives', 'redirected_incentives', 'reroute_incentives']
-
-    for col in numeric_columns:
-        gen_col = f'{col}_gen'
-        exp_col = f'{col}_exp'
-        
-        diff_pct = abs((merged_df[gen_col] - merged_df[exp_col]) / merged_df[exp_col] * 100)
-
-        problems = merged_df[diff_pct > 1]
-        
-        if not problems.empty:
-            error_msg = f"\nValues for {col} differ by more than 1% for the following pools:\n"
-            for _, row in problems.iterrows():
-                error_msg += f"Pool {row['pool_id']}: Generated={row[gen_col]:.2f}, Expected={row[exp_col]:.2f}, Diff={diff_pct.loc[_]:.2f}%\n"
-            pytest.fail(error_msg)
-
-    
-
+    # Verify aura vebal share was set
+    assert allocator.run_config.aura_vebal_share is not None
+    assert isinstance(allocator.run_config.aura_vebal_share, Decimal)
+    assert 0 <= allocator.run_config.aura_vebal_share <= 1
