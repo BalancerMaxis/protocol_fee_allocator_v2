@@ -251,16 +251,15 @@ class CorePoolChain(AbstractCorePoolChain):
             else self.bal_pools_gauges.core_pools
         )
 
-        if self.chains.protocol_version == "v3":
-            v3_pools = [(p, l) for p, l in core_pools_list if len(p) == 42]
-            for pool_id, label in v3_pools:
+        for pool_id, label in core_pools_list:
+            protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
+
+            if protocol_version == 3 and self.chains.protocol_version == "v3":
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
                 if pool_fee_data:
                     pools_data.append(pool_fee_data)
 
-        elif self.chains.protocol_version == "v2":
-            v2_pools = [(p, l) for p, l in core_pools_list if len(p) != 42]
-            for pool_id, label in v2_pools:
+            elif protocol_version == 2 and self.chains.protocol_version == "v2":
                 start_snap = self._get_latest_snapshot(start_snaps, pool_id)
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
                 if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
@@ -325,9 +324,9 @@ class CorePoolChain(AbstractCorePoolChain):
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
+            protocol_version=2,
         )
        
-    
     def _fetch_twap_prices_and_init_pool_fee_data_v3(
         self,
         pool_id: str,
@@ -351,6 +350,7 @@ class CorePoolChain(AbstractCorePoolChain):
                 start_pool_snapshot=None,
                 end_pool_snapshot=None,
                 last_join_exit_ts=last_join_exit_ts,
+                protocol_version=3,
                 total_earned_fees_usd_twap=self.subgraph.get_v3_protocol_fees(pool_id, self.name, self.chains.date_range),
             )
         except NoPricesFoundError:

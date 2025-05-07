@@ -26,6 +26,7 @@ class PoolFeeData:
         start_pool_snapshot (PoolSnapshot): The pool snapshot at the start of the period.
         end_pool_snapshot (PoolSnapshot): The pool snapshot at the end of the period.
         last_join_exit_ts (int): The timestamp of the last join or exit event for the pool.
+        protocol_version (int): The protocol version of the pool (2 or 3).
     """
     pool_id: str
     address: str
@@ -35,17 +36,18 @@ class PoolFeeData:
     start_pool_snapshot: PoolSnapshot
     end_pool_snapshot: PoolSnapshot
     last_join_exit_ts: int
+    protocol_version: int
     bpt_price: Decimal = field(default=Decimal(0))
     total_earned_fees_usd_twap: Decimal = None
 
     def __post_init__(self):
-        if len(self.pool_id) == 42:
-            # v3 pool; earned fees already calculated
+        if self.protocol_version == 3:
             if self.total_earned_fees_usd_twap is None:
                 raise ValueError(f"v3 pool {self.pool_id} must have total_earned_fees_usd_twap set. got {self.total_earned_fees_usd_twap}")
-        else:
-            # v2 pool
+        elif self.protocol_version == 2:
             self.total_earned_fees_usd_twap = self._set_total_earned_fees_usd_twap_v2()
+        else:
+            raise ValueError(f"Invalid protocol version {self.protocol_version} for pool {self.pool_id}")
 
     def _set_total_earned_fees_usd_twap_v2(self) -> Decimal:
         bpt_fee = (
