@@ -22,10 +22,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install pytest-timeout
 
       - name: Run pytest
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
         run: |
-          pytest --vv -s --tb=short --timeout=300
+          pytest -v -s --timeout=300
