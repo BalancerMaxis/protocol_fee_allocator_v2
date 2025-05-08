@@ -28,4 +28,4 @@ jobs:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
         run: |
-          pytest
+          pytest --vv -s --tb=short --timeout=300
