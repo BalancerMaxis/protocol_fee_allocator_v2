@@ -324,6 +324,7 @@ class FeeAllocator:
                     "partner": alliance_pool.partner,
                     "amount": partner_fee,
                     "target": member.multisig_address,
+                    "pool_type": "core" if core_pool else "non-core"
                 })
 
 
