@@ -49,8 +49,9 @@ def main() -> None:
     fee_allocator.recon()
 
     fee_allocator.generate_incentives_csv()
-    file_name = fee_allocator.generate_bribe_csv()
-    fee_allocator.generate_bribe_payload(file_name)
+    bribe_file_name = fee_allocator.generate_bribe_csv()
+    partner_file_name = fee_allocator.generate_partner_csv()
+    fee_allocator.generate_bribe_payload(bribe_file_name, partner_csv=partner_file_name)
     fee_allocator.generate_noncore_csv()
 
 
