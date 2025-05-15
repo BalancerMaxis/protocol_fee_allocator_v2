@@ -85,14 +85,6 @@ class FeeAllocator:
         """
         min_amount = self.run_config.fee_config.min_vote_incentive_amount
         
-        # for chain in self.run_config.all_chains:
-        #     total_earned_fees = sum(p.total_earned_fees_usd_twap for p in chain.core_pools)
-        #     for pool in chain.core_pools:
-        #         if total_earned_fees > 0:
-        #             pool.original_earned_fee_share = pool.total_earned_fees_usd_twap / total_earned_fees
-        #         else:
-        #             pool.original_earned_fee_share = Decimal(0)
-
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
@@ -116,10 +108,6 @@ class FeeAllocator:
                 pool.redirected_incentives_usd += total
                 pool.to_aura_incentives_usd += total if pool.is_alliance_pool else total * self.run_config.aura_vebal_share
                 pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_pool else total * (1 - self.run_config.aura_vebal_share)
-
-            # for pool in chain.core_pools:
-            #     pool.to_dao_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.dao_share_pct
-            #     pool.to_vebal_usd = pool.original_earned_fee_share * chain.fees_collected * self.run_config.fee_config.vebal_share_pct
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
