@@ -133,7 +133,8 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _total_to_incentives_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        to_distribute_to_incentives = core_fees * (self.chain.chains.fee_config.vote_incentive_pct if not self.is_alliance_non_core_pool else self.alliance_fee_config.vote_incentive_pct)
+        vote_incentive_pct = self.chain.chains.alliance_config.alliance_fee_allocations["core"].vote_incentive_pct if self.is_alliance_pool else self.chain.chains.fee_config.vote_incentive_pct
+        to_distribute_to_incentives = core_fees * vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     def _to_aura_incentives_usd(self) -> Decimal:
