@@ -1,0 +1,5 @@
+chain,total_fees_collected,total_fees_earned_twap,noncore_fees,noncore_to_dao,noncore_to_vebal,dao_share_pct,vebal_share_pct
+gnosis,1394.0592,2089.8435,0.0000,0.0000,0.0000,17.50,82.50
+arbitrum,3006.7070,11051.0810,0.0000,0.0000,0.0000,17.50,82.50
+base,38597.3097,68715793649.8077,0.0000,0.0000,0.0000,17.50,82.50
+mainnet,16267.0178,11321.4033,4945.6145,865.4825,4080.1320,17.50,82.50
