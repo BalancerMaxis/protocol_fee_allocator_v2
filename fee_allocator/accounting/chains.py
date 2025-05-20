@@ -83,12 +83,16 @@ class CorePoolRunConfig:
     def set_core_pool_chains_data(self):
         """
         iterate over each chain in `input_fees` and fetch that chain's core pool data
-        only chains that have core pools are initialized, else the fees are redistributed to other chains
+        only chains that have core pools and non-zero fees are initialized, else the fees are redistributed to other chains
         """
         _chains: dict[str, CorePoolChain] = {}
         unallocated_fees: dict[str, Decimal] = {}
 
         for chain_name, fees in self.input_fees.items():
+            if fees == 0:
+                print(f"{chain_name} has no fees on {self.protocol_version}, skipping...")
+                continue
+                
             chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             chain.set_pool_fee_data()
             
