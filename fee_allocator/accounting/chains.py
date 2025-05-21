@@ -279,7 +279,6 @@ class CorePoolChain(AbstractCorePoolChain):
 
         self._init_alliance_pools()
 
-        alliance_pool_ids = {pool.pool_id for pool in self.alliance_pools}
         alliance_pool_tuples = [(pool.pool_id, pool.partner) for pool in self.alliance_pools]
 
         core_pools_dict = dict(core_pools_list)
@@ -300,9 +299,9 @@ class CorePoolChain(AbstractCorePoolChain):
             elif protocol_version == 2 and self.chains.protocol_version == "v2":
                 start_snap = self._get_latest_snapshot(start_snaps, pool_id)
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-                if pool_id in alliance_pool_ids or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                if alliance_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
-                    alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
                     if alliance_pool and alliance_pool.pool_type != "core":
                         self.alliance_noncore_fee_data.append(pool_fee_data)
                     else:
