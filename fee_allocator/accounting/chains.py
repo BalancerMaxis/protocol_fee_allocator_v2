@@ -18,12 +18,13 @@ from fee_allocator.accounting.core_pools import PoolFee, PoolFeeData
 from fee_allocator.accounting.interfaces import AbstractCorePoolChain
 from fee_allocator.accounting.models import (
     GlobalFeeConfig,
-    RerouteConfig,
     InputFees,
+    AllianceConfig,
+    AlliancePool
 )
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
-    REROUTE_CONFIG_URL,
+    ALLIANCE_CONFIG_URL
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
@@ -61,7 +62,7 @@ class CorePoolRunConfig:
         self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
-        self.reroute_config = RerouteConfig(**requests.get(REROUTE_CONFIG_URL).json())
+        self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
 
         # caches a list of `PoolFeeData` for each chain
         self.use_cache = use_cache
@@ -82,12 +83,16 @@ class CorePoolRunConfig:
     def set_core_pool_chains_data(self):
         """
         iterate over each chain in `input_fees` and fetch that chain's core pool data
-        only chains that have core pools are initialized, else the fees are redistributed to other chains
+        only chains that have core pools and non-zero fees are initialized, else the fees are redistributed to other chains
         """
         _chains: dict[str, CorePoolChain] = {}
         unallocated_fees: dict[str, Decimal] = {}
 
         for chain_name, fees in self.input_fees.items():
+            if fees == 0:
+                print(f"{chain_name} has no fees on {self.protocol_version}, skipping...")
+                continue
+                
             chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             chain.set_pool_fee_data()
             
@@ -177,6 +182,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.fees_collected = fees
         self.web3 = web3
         self.core_pools_list = self.chains.core_pools.get(self.name, {}) if self.chains.core_pools else None
+        self.alliance_pools: List[AlliancePool] = []
 
         try:
             self.chain_id = AddrBook.chain_ids_by_name[self.name]
@@ -190,12 +196,24 @@ class CorePoolChain(AbstractCorePoolChain):
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
         self.core_pools: List[PoolFee] = []
+        self.alliance_noncore_fee_data: List[PoolFee] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = get_block_by_ts(self.chains.date_range[0], self)
         end = get_block_by_ts(self.chains.date_range[1], self)
         logger.info(f"set blocks for {self.name}: {start} - {end}")
         return (start, end)
+    
+    def _init_alliance_pools(self) -> None:
+        """
+        Initialize alliance pools for the current chain
+        """
+        self.alliance_pools = [
+            pool
+            for member in self.chains.alliance_config.alliance_members
+            for pool in member.pools
+            if pool.network == self.name and pool.active
+        ]
 
     def set_pool_fee_data(self):
         """
@@ -219,10 +237,18 @@ class CorePoolChain(AbstractCorePoolChain):
 
     def _load_core_pools_from_cache(self) -> list[PoolFeeData]:
         logger.info(f"loading core pools from cache for {self.name}")
-        return joblib.load(self._cache_file_path())
+        cached_data = joblib.load(self._cache_file_path())
+        self.alliance_pools = cached_data.get('alliance_pools', [])
+        self.alliance_noncore_fee_data = cached_data.get('alliance_noncore_fee_data', [])
+        return cached_data.get('pool_fee_data', [])
 
     def _save_core_pools_to_cache(self, pool_data: list[PoolFeeData]) -> None:
-        joblib.dump(pool_data, self._cache_file_path())
+        cache_data = {
+            'pool_fee_data': pool_data,
+            'alliance_pools': self.alliance_pools,
+            'alliance_noncore_fee_data': self.alliance_noncore_fee_data
+        }
+        joblib.dump(cache_data, self._cache_file_path())
 
     def _fetch_and_process_pool_fee_data(self) -> list[PoolFeeData]:
         """
@@ -245,26 +271,40 @@ class CorePoolChain(AbstractCorePoolChain):
 
         pools_data = []
 
-        core_pools_list = (
+        core_pools_list = list(
             [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
             if self.core_pools_list is not None
             else self.bal_pools_gauges.core_pools
         )
+
+        self._init_alliance_pools()
+
+        alliance_pool_tuples = [(pool.pool_id, pool.partner) for pool in self.alliance_pools]
+
+        core_pools_dict = dict(core_pools_list)
+        core_pools_dict.update(dict(alliance_pool_tuples))
+        core_pools_list = list(core_pools_dict.items())
 
         for pool_id, label in core_pools_list:
             protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
 
             if protocol_version == 3 and self.chains.protocol_version == "v3":
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
-                if pool_fee_data:
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                if alliance_pool and alliance_pool.pool_type != "core":
+                    self.alliance_noncore_fee_data.append(pool_fee_data)
+                else:
                     pools_data.append(pool_fee_data)
 
             elif protocol_version == 2 and self.chains.protocol_version == "v2":
                 start_snap = self._get_latest_snapshot(start_snaps, pool_id)
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-                if self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                if alliance_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
-                    if pool_fee_data:
+                    if alliance_pool and alliance_pool.pool_type != "core":
+                        self.alliance_noncore_fee_data.append(pool_fee_data)
+                    else:
                         pools_data.append(pool_fee_data)
 
         return pools_data
@@ -320,7 +360,7 @@ class CorePoolChain(AbstractCorePoolChain):
             symbol=label,
             bpt_price=prices.bpt_price.twap_price,
             tokens_price=prices.token_prices,
-            gauge_address=pool_to_gauge[pool_id],
+            gauge_address=pool_to_gauge.get(pool_id),
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
@@ -346,7 +386,7 @@ class CorePoolChain(AbstractCorePoolChain):
                 address=pool_id,
                 symbol=label,
                 tokens_price=None,
-                gauge_address=pool_to_gauge[pool_id],
+                gauge_address=pool_to_gauge.get(pool_id),
                 start_pool_snapshot=None,
                 end_pool_snapshot=None,
                 last_join_exit_ts=last_join_exit_ts,
@@ -398,3 +438,15 @@ class CorePoolChain(AbstractCorePoolChain):
     @require_pool_fee_data
     def total_fees_earned(self) -> Decimal:
         return self.total_earned_fees_usd_twap + self.noncore_fees_collected
+    
+    @property
+    def alliance_noncore_fees_collected(self) -> Decimal:
+        return sum(pool.total_earned_fees_usd_twap for pool in self.alliance_noncore_fee_data)
+
+    @property
+    def alliance_noncore_to_dao_usd(self) -> Decimal:
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct
+
+    @property
+    def alliance_noncore_to_vebal_usd(self) -> Decimal:
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct

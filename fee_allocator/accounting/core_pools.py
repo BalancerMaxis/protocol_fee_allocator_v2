@@ -39,6 +39,8 @@ class PoolFeeData:
     protocol_version: int
     bpt_price: Decimal = field(default=Decimal(0))
     total_earned_fees_usd_twap: Decimal = None
+    is_alliance_pool: bool = field(default=False)
+    is_alliance_non_core_pool: bool = field(default=False)
 
     def __post_init__(self):
         if self.protocol_version == 3:
@@ -82,6 +84,10 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.__dict__.update(vars(data))
         self.chain = chain
 
+        self.is_alliance_pool = self._check_if_alliance_pool()
+        self.alliance_fee_config = self._get_alliance_fee_config() if self.is_alliance_pool else None
+        self.is_alliance_non_core_pool = self._is_alliance_non_core_pool()
+
         self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
         self.total_to_incentives_usd = self._total_to_incentives_usd()
@@ -89,10 +95,30 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.to_bal_incentives_usd = self._to_bal_incentives_usd()
         self.to_dao_usd = self._to_dao_usd()
         self.to_vebal_usd = self._to_vebal_usd()
+        self.to_partner_usd = self._to_partner_usd()
         self.redirected_incentives_usd = Decimal(0)
 
         override_cls = overrides.get(self.pool_id)
         self.override = override_cls(self) if override_cls else None
+
+    
+    def _check_if_alliance_pool(self) -> bool:
+        return self.chain.chains.alliance_config.get_pool_fee_config(self.pool_id, self.chain.name, True) is not None
+
+    def _get_alliance_fee_config(self):
+        return self.chain.chains.alliance_config.get_pool_fee_config(self.pool_id, self.chain.name, True)
+
+    def _is_alliance_non_core_pool(self) -> bool:
+        if not self.is_alliance_pool:
+            return False
+
+        for member in self.chain.chains.alliance_config.alliance_members:
+            for pool in member.pools:
+                if pool.pool_type != "core":
+                    print(f"Alliance non-core pool: {pool.pool_id} {pool.network} {pool.active}")
+                if pool.pool_id == self.pool_id and pool.network == self.chain.name and pool.active:
+                    return pool.pool_type != "core"
+        return False
 
     def _earned_fee_share_of_chain_usd(self) -> Decimal:
         if self.chain.total_earned_fees_usd_twap == 0:
@@ -107,13 +133,18 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _total_to_incentives_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        to_distribute_to_incentives = core_fees * self.chain.chains.fee_config.vote_incentive_pct
+        vote_incentive_pct = self.chain.chains.alliance_config.alliance_fee_allocations["core"].vote_incentive_pct if self.is_alliance_pool else self.chain.chains.fee_config.vote_incentive_pct
+        to_distribute_to_incentives = core_fees * vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
     def _to_aura_incentives_usd(self) -> Decimal:
+        if self.is_alliance_non_core_pool:
+            return self.total_to_incentives_usd
         return self.total_to_incentives_usd * self.chain.chains.aura_vebal_share
 
     def _to_bal_incentives_usd(self) -> Decimal:
+        if self.is_alliance_non_core_pool:
+            return Decimal(0)
         return self.total_to_incentives_usd * (1 - self.chain.chains.aura_vebal_share)
 
     def _to_dao_usd(self) -> Decimal:
@@ -121,7 +152,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return (
             self.earned_fee_share_of_chain_usd
             * core_fees
-            * self.chain.chains.fee_config.dao_share_pct
+            * (self.chain.chains.fee_config.dao_share_pct if not self.is_alliance_non_core_pool else self.alliance_fee_config.dao_share_pct)
         )
 
     def _to_vebal_usd(self) -> Decimal:
@@ -129,5 +160,12 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return (
             self.earned_fee_share_of_chain_usd
             * core_fees
-            * self.chain.chains.fee_config.vebal_share_pct
+            * (self.chain.chains.fee_config.vebal_share_pct if not self.is_alliance_non_core_pool else self.alliance_fee_config.vebal_share_pct)
         )
+
+    def _to_partner_usd(self) -> Decimal:
+        return (
+            self.earned_fee_share_of_chain_usd
+            * self.chain.total_earned_fees_usd_twap
+            * self.alliance_fee_config.partner_share_pct
+        ) if self.is_alliance_pool else Decimal(0)
