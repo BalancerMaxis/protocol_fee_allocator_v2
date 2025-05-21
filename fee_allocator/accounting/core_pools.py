@@ -95,7 +95,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.to_bal_incentives_usd = self._to_bal_incentives_usd()
         self.to_dao_usd = self._to_dao_usd()
         self.to_vebal_usd = self._to_vebal_usd()
-        self.to_partner_usd = self._to_partner_usd() if self.is_alliance_pool else Decimal(0)
+        self.to_partner_usd = self._to_partner_usd()
         self.redirected_incentives_usd = Decimal(0)
 
         override_cls = overrides.get(self.pool_id)
