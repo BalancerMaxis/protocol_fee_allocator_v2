@@ -1,4 +1,4 @@
-from typing import TypedDict, Union, Dict
+from typing import TypedDict, Union, Dict, List
 from bal_tools.subgraph import DateRange
 from bal_tools.safe_tx_builder import SafeTxBuilder, SafeContract
 from bal_addresses import AddrBook
@@ -115,56 +115,70 @@ class FeeAllocator:
 
     def _handle_aura_min(self, buffer=0):
         """
-        Handles the minimum Aura incentive requirement for pools.
+        ensures all pools meet the minimum AURA incentive threshold.
         
-        This method performs the following steps:
-        1. Calculates the minimum Aura incentive amount, considering an optional buffer.
-        2. Identifies pools below the minimum threshold or with specific overrides.
-        3. Redistributes incentives from these pools to Balancer.
-        4. Reallocates the debt from pools below the minimum to eligible pools above the threshold.
-        5. Adjusts Aura and Balancer incentives for eligible pools to repay the debt.
-        6. Logs the remaining debt information for each affected pool.
-
-        Args:
-            buffer (float): An optional buffer percentage to adjust the minimum Aura incentive. Defaults to 0.
+        pools below the threshold have their aura moved to bal, then that amount is
+        redistributed from other pools BAL to AURA to maintain the minimum.
+        runs iteratively until all pools meet the threshold or no more transfers are possible
         """
-        min_aura_incentive = self.run_config.fee_config.min_aura_incentive * (1 - buffer)
+        min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive * (1 - buffer))
         for chain in self.run_config.all_chains:
-            debt_to_aura = Decimal(0)
+            while True:
+                debt_to_aura = Decimal(0)
+                pools_below_min: List[PoolFee] = []
 
-            for pool in chain.core_pools:
-                if pool.to_aura_incentives_usd < min_aura_incentive or (
-                    pool.override and pool.override.voting_pool == "bal"
-                ):
-                    debt_to_aura += pool.to_aura_incentives_usd
+                for pool in chain.core_pools:
+                    if pool.to_aura_incentives_usd < min_aura_incentive or (
+                        pool.override and pool.override.voting_pool == "bal"
+                    ):
+                        debt_to_aura += pool.to_aura_incentives_usd
+                        pools_below_min.append(pool)
+
+                if not debt_to_aura:
+                    break
+
+                for pool in pools_below_min:
                     pool.to_bal_incentives_usd += pool.to_aura_incentives_usd
                     pool.to_aura_incentives_usd = Decimal(0)
 
-            if not debt_to_aura:
-                continue
+                pools_over_min = [
+                    p
+                    for p in chain.core_pools
+                    if p.to_aura_incentives_usd >= min_aura_incentive and p.to_bal_incentives_usd > 0
+                ]
 
-            pools_over_min = [
-                p
-                for p in chain.core_pools
-                if p.to_aura_incentives_usd >= min_aura_incentive
-            ]
-            if not pools_over_min:
-                continue
+                if not pools_over_min:
+                    break
 
-            amount_per_pool = debt_to_aura / len(pools_over_min)
-            debt_repaid = Decimal(0)
-
-            for pool in pools_over_min:
-                amount = min(amount_per_pool, pool.to_bal_incentives_usd)
-                pool.to_aura_incentives_usd += amount
-                pool.to_bal_incentives_usd -= amount
-                debt_repaid += amount
-
-                if debt_to_aura - debt_repaid >= 0:
-                    print(
-                        f"{pool.pool_id} remaining debt to aura market: {debt_to_aura}, "
-                        f"Debt repaid: {debt_repaid}, debt remaining: {debt_to_aura - debt_repaid}"
+                pools_over_min.sort(key=lambda p: p.to_bal_incentives_usd, reverse=True)
+                debt_remaining = debt_to_aura
+                total_available_bal = sum(p.to_bal_incentives_usd for p in pools_over_min)
+                
+                if total_available_bal == 0:
+                    break
+                
+                transfers_made = False
+                for pool in pools_over_min:
+                    if debt_remaining <= 0:
+                        break
+                    
+                    pool_share = pool.to_bal_incentives_usd / total_available_bal
+                    amount_to_transfer = min(
+                        debt_remaining * pool_share,
+                        pool.to_bal_incentives_usd,
+                        # ensure pool stays above minimum after transfer
+                        max(Decimal(0), pool.to_aura_incentives_usd + pool.to_bal_incentives_usd - min_aura_incentive)
                     )
+
+                    if amount_to_transfer > 0:
+                        pool.to_aura_incentives_usd += amount_to_transfer
+                        pool.to_bal_incentives_usd -= amount_to_transfer
+                        debt_remaining -= amount_to_transfer
+                        transfers_made = True
+
+                if not transfers_made:
+                    logger.warning(f"Warning: Could not redistribute AURA debt on {chain.name}. Remaining: {debt_to_aura}")
+                    break
 
     def _filter_dusty_bal_incentives(self):
         for chain in self.run_config.all_chains:
