@@ -478,11 +478,11 @@ class FeeAllocator:
 
                 total_aura += pool.to_aura_incentives_usd
                 total_bal += pool.to_bal_incentives_usd
-                total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
-                total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
+                total_dao += pool.to_dao_usd
+                total_vebal += pool.to_vebal_usd
 
-            total_dao += chain.noncore_to_dao_usd
-            total_vebal += chain.noncore_to_vebal_usd
+            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
+            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
 
         total_incentives = total_aura + total_bal + total_dao + total_vebal
         total_pct = (total_aura + total_bal + total_dao + total_vebal) / total_incentives
