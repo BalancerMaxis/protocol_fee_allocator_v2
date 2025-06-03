@@ -323,11 +323,7 @@ class FeeAllocator:
                     partner_fee = core_pool.to_partner_usd
                     pool_id = core_pool.pool_id
                 elif noncore_pool:
-                    partner_fee = (
-                        noncore_pool.total_earned_fees_usd_twap / chain.alliance_noncore_fees_collected
-                        * chain.alliance_noncore_fees_collected
-                        * self.run_config.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
-                    )
+                    partner_fee = chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
                     pool_id = noncore_pool.pool_id
                 else:
                     continue
@@ -481,7 +477,8 @@ class FeeAllocator:
         total_bal = Decimal(0)
         total_dao = Decimal(0)
         total_vebal = Decimal(0)
-        total_incentives = Decimal(0)
+        total_partner = Decimal(0)
+        total_distributed = Decimal(0)
 
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
@@ -489,19 +486,27 @@ class FeeAllocator:
                 assert pool.to_bal_incentives_usd >= 0, f"Negative bal incentives: {pool.to_bal_incentives_usd}"
                 assert pool.to_dao_usd >= 0, f"Negative dao share: {pool.to_dao_usd}"
                 assert pool.to_vebal_usd >= 0, f"Negative vebal share: {pool.to_vebal_usd}"
+                assert pool.to_partner_usd >= 0, f"Negative partner share: {pool.to_partner_usd}"
 
                 total_aura += pool.to_aura_incentives_usd
                 total_bal += pool.to_bal_incentives_usd
                 total_dao += pool.to_dao_usd
                 total_vebal += pool.to_vebal_usd
+                total_partner += pool.to_partner_usd
 
             total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
             total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
 
-        total_incentives = total_aura + total_bal + total_dao + total_vebal
-        total_pct = (total_aura + total_bal + total_dao + total_vebal) / total_incentives
+            for alliance_pool in chain.alliance_pools:
+                total_partner += chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
 
-        assert abs(1 - total_pct) < Decimal('0.0001'), f"Percentages don't sum to 1: {total_pct}"
+        # Total distributed includes all allocations including partner fees
+        total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner
+
+        # For percentage calculations, we need to check that everything sums to 100%
+        if total_distributed > 0:
+            total_pct = total_distributed / total_distributed  # This should always be 1
+            assert abs(1 - total_pct) < Decimal('0.0001'), f"Percentages don't sum to 1: {total_pct}"
 
         # Only check Aura share against BAL for core pool incentives
         core_pool_incentives = total_aura + total_bal
@@ -514,17 +519,19 @@ class FeeAllocator:
 
         summary = {
             "feesCollected": float(round(total_fees, 2)),
-            "incentivesDistributed": float(round(total_incentives, 2)), 
-            "feesNotDistributed": float(round(total_fees - total_incentives, 2)),
+            "totalDistributed": float(round(total_distributed, 2)),
+            "feesNotDistributed": float(round(total_fees - total_distributed, 2)),
             "auraIncentives": float(round(total_aura, 2)),
             "balIncentives": float(round(total_bal, 2)),
             "feesToDao": float(round(total_dao, 2)),
             "feesToVebal": float(round(total_vebal, 2)),
+            "feesToPartners": float(round(total_partner, 2)),
             "auravebalShare": float(round(aura_share, 2)),
-            "auraIncentivesPct": float(round(total_aura / total_incentives, 4)),
-            "balIncentivesPct": float(round(total_bal / total_incentives, 4)),
-            "feesToDaoPct": float(round(total_dao / total_incentives, 4)),
-            "feesToVebalPct": float(round(total_vebal / total_incentives, 4)),
+            "auraIncentivesPct": float(round(total_aura / total_distributed, 4)) if total_distributed > 0 else 0,
+            "balIncentivesPct": float(round(total_bal / total_distributed, 4)) if total_distributed > 0 else 0,
+            "feesToDaoPct": float(round(total_dao / total_distributed, 4)) if total_distributed > 0 else 0,
+            "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
+            "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1]

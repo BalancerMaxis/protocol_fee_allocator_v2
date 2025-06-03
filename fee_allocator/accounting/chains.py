@@ -196,7 +196,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
         self.core_pools: List[PoolFee] = []
-        self.alliance_noncore_fee_data: List[PoolFee] = []
+        self.alliance_noncore_fee_data: List[PoolFeeData] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = get_block_by_ts(self.chains.date_range[0], self)
@@ -395,6 +395,17 @@ class CorePoolChain(AbstractCorePoolChain):
             )
         except NoPricesFoundError:
             return None
+        
+    def get_alliance_noncore_partner_fee(self, pool_id: str) -> Decimal:
+        noncore_pool = next((p for p in self.alliance_noncore_fee_data if p.pool_id == pool_id), None)
+        if not noncore_pool or self.alliance_noncore_fees_collected == 0:
+            return Decimal(0)
+            
+        return (
+            noncore_pool.total_earned_fees_usd_twap / self.alliance_noncore_fees_collected
+            * self.alliance_noncore_fees_collected
+            * self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
+        )
 
     @staticmethod
     def _get_latest_snapshot(

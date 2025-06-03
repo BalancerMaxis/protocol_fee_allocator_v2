@@ -162,6 +162,7 @@ cython_debug/
 #.idea/
 
 .DS_Store
+CLAUDE.local.md
 
 fee_allocator/accounting/cache/
 tests/cache/
