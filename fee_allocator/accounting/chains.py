@@ -207,8 +207,7 @@ class CorePoolChain(AbstractCorePoolChain):
     def _init_alliance_pools(self) -> None:
         """
         Initialize alliance pools for the current chain.
-        For v3 pools, check if TVL is above $5M threshold.
-        For v2 pools, accept all pools (grandfathered in).
+        Uses TVL thresholds from alliance config to determine eligibility.
         """
         all_alliance_pools = [
             pool
@@ -218,27 +217,31 @@ class CorePoolChain(AbstractCorePoolChain):
         ]
         
         self.alliance_pools = []
-        tvl_threshold = Decimal("5_000_000")
+        thresholds = self.chains.alliance_config.alliance_thresholds
         
         for pool in all_alliance_pools:
             protocol_version = self.subgraph.get_pool_protocol_version(pool.pool_id)
             
-            if protocol_version == 2:
-                # v2 pools are grandfathered in - no TVL check needed
-                self.alliance_pools.append(pool)
-                logger.info(f"v2 Alliance pool: {pool.pool_id} added as partner pool")
-            elif protocol_version == 3:
-                try:
-                    tvl = self.bal_pools_gauges.get_pool_tvl(pool.pool_id)
-                    if tvl >= tvl_threshold:
-                        self.alliance_pools.append(pool)
-                        logger.info(f"v3 Alliance pool: {pool.pool_id} added as partner pool - TVL ${tvl:,.2f}")
-                    else:
-                        logger.info(f"v3 Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
-                except Exception as e:
-                    logger.error(f"Failed to get TVL for Alliance pool {pool.pool_id}: {e}")
-            else:
+            if protocol_version not in [2, 3]:
                 logger.warning(f"Alliance pool {pool.pool_id} has unknown protocol version {protocol_version}")
+                continue
+
+            tvl_threshold = thresholds.v2_min_tvl if protocol_version == 2 else thresholds.v3_min_tvl
+            
+            if tvl_threshold == 0:
+                self.alliance_pools.append(pool)
+                logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                continue
+            
+            try:
+                tvl = self.bal_pools_gauges.get_pool_tvl(pool.pool_id)
+                if tvl >= tvl_threshold:
+                    self.alliance_pools.append(pool)
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                else:
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
+            except Exception as e:
+                logger.error(f"Failed to get TVL for v{protocol_version} Alliance pool {pool.pool_id}: {e}")
 
     def set_pool_fee_data(self):
         """
