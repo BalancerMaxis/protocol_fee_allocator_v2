@@ -206,14 +206,47 @@ class CorePoolChain(AbstractCorePoolChain):
     
     def _init_alliance_pools(self) -> None:
         """
-        Initialize alliance pools for the current chain
+        Initialize alliance pools for the current chain.
+        Uses TVL thresholds from alliance config to determine eligibility.
         """
-        self.alliance_pools = [
+        all_alliance_pools = [
             pool
             for member in self.chains.alliance_config.alliance_members
             for pool in member.pools
             if pool.network == self.name and pool.active
         ]
+        
+        self.alliance_pools = []
+        thresholds = self.chains.alliance_config.alliance_thresholds
+
+        allocator_version = int(self.chains.protocol_version.replace("v", ""))
+
+        for pool in all_alliance_pools:
+            protocol_version = self.subgraph.get_pool_protocol_version(pool.pool_id)
+            
+            if protocol_version not in [2, 3]:
+                logger.warning(f"Alliance pool {pool.pool_id} has unknown protocol version {protocol_version}")
+                continue
+
+            if protocol_version != allocator_version:
+                continue
+
+            tvl_threshold = thresholds.v2_min_tvl if protocol_version == 2 else thresholds.v3_min_tvl
+            
+            if tvl_threshold == 0:
+                self.alliance_pools.append(pool)
+                logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                continue
+            
+            try:
+                tvl = self.bal_pools_gauges.get_pool_tvl(pool.pool_id)
+                if tvl >= tvl_threshold:
+                    self.alliance_pools.append(pool)
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                else:
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
+            except Exception as e:
+                logger.error(f"Failed to get TVL for v{protocol_version} Alliance pool {pool.pool_id}: {e}")
 
     def set_pool_fee_data(self):
         """
