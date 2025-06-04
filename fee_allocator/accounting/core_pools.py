@@ -96,6 +96,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.to_dao_usd = self._to_dao_usd()
         self.to_vebal_usd = self._to_vebal_usd()
         self.to_partner_usd = self._to_partner_usd()
+        self.to_beets_usd = self._to_beets_usd()
         self.redirected_incentives_usd = Decimal(0)
 
         override_cls = overrides.get(self.pool_id)
@@ -149,17 +150,21 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _to_dao_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
+        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
         return (
             self.earned_fee_share_of_chain_usd
             * core_fees
+            * (1 - beets_share_pct)
             * (self.chain.chains.fee_config.dao_share_pct if not self.is_alliance_non_core_pool else self.alliance_fee_config.dao_share_pct)
         )
 
     def _to_vebal_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
+        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
         return (
             self.earned_fee_share_of_chain_usd
             * core_fees
+            * (1 - beets_share_pct)
             * (self.chain.chains.fee_config.vebal_share_pct if not self.is_alliance_non_core_pool else self.alliance_fee_config.vebal_share_pct)
         )
 
@@ -169,3 +174,9 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
             * self.chain.total_earned_fees_usd_twap
             * self.alliance_fee_config.partner_share_pct
         ) if self.is_alliance_pool else Decimal(0)
+        
+    def _to_beets_usd(self) -> Decimal:
+        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
+        if beets_share_pct == 0:
+            return Decimal(0)
+        return (self.to_dao_usd + self.to_vebal_usd)

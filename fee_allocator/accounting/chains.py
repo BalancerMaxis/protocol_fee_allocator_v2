@@ -62,6 +62,7 @@ class CorePoolRunConfig:
         self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
+        self.beets_share_pct = Decimal(0.5)  # beets share is hardcoded to 50% for now, needs to be added to config
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
 
         # caches a list of `PoolFeeData` for each chain
@@ -146,13 +147,20 @@ class CorePoolRunConfig:
         return sum(
             [pool.to_dao_usd for chain in self.all_chains for pool in chain.core_pools]
         )
+        
+    @property
+    @round(4)
+    def total_to_beets_usd(self) -> Decimal:
+        return sum(
+            [pool.to_beets_usd for chain in self.all_chains for pool in chain.core_pools]
+        )
 
     @property
     @round(4)
     def total_to_incentives_usd(self) -> Decimal:
         return sum(
             [
-                pool.total_to_incentives_usd + pool.to_dao_usd + pool.to_vebal_usd
+                pool.total_to_incentives_usd + pool.to_dao_usd + pool.to_vebal_usd + pool.to_beets_usd
                 for chain in self.all_chains
                 for pool in chain.core_pools
             ]
@@ -191,7 +199,7 @@ class CorePoolChain(AbstractCorePoolChain):
 
         self.fees_collected = Decimal(self.fees_collected)
         self.subgraph = Subgraph(self.name)
-        self.bal_pools_gauges = BalPoolsGauges(self.name, use_cached_core_pools=True)
+        self.bal_pools_gauges = BalPoolsGauges(self.name, use_cached_core_pools=False)
 
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
@@ -236,7 +244,6 @@ class CorePoolChain(AbstractCorePoolChain):
         return self.chains.cache_dir / filename
 
     def _load_core_pools_from_cache(self) -> list[PoolFeeData]:
-        logger.info(f"loading core pools from cache for {self.name}")
         cached_data = joblib.load(self._cache_file_path())
         self.alliance_pools = cached_data.get('alliance_pools', [])
         self.alliance_noncore_fee_data = cached_data.get('alliance_noncore_fee_data', [])
@@ -427,12 +434,22 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def noncore_to_dao_usd(self) -> Decimal:
-        return self.noncore_fees_collected * self.chains.fee_config.noncore_dao_share_pct
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        return self.noncore_fees_collected * (1 - beets_share_pct) * self.chains.fee_config.noncore_dao_share_pct
 
     @property
     @require_pool_fee_data
     def noncore_to_vebal_usd(self) -> Decimal:
-        return self.noncore_fees_collected * self.chains.fee_config.noncore_vebal_share_pct
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        return self.noncore_fees_collected * (1 - beets_share_pct) * self.chains.fee_config.noncore_vebal_share_pct
+    
+    @property
+    @require_pool_fee_data
+    def noncore_to_beets_usd(self) -> Decimal:
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        if beets_share_pct == 0:
+            return Decimal(0)
+        return self.noncore_fees_collected * beets_share_pct
 
     @property
     @require_pool_fee_data
@@ -445,8 +462,17 @@ class CorePoolChain(AbstractCorePoolChain):
 
     @property
     def alliance_noncore_to_dao_usd(self) -> Decimal:
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct  * (1 - beets_share_pct)
 
     @property
     def alliance_noncore_to_vebal_usd(self) -> Decimal:
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct  * (1 - beets_share_pct)
+
+    @property
+    def alliance_noncore_to_beets_usd(self) -> Decimal:
+        beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
+        if beets_share_pct == 0:
+            return Decimal(0)
+        return self.alliance_noncore_fees_collected * beets_share_pct * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct)
