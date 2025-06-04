@@ -317,7 +317,7 @@ class FeeAllocator:
                         ),
                         "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
-                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools),
+                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools) or any(pool.pool_id == core_pool.pool_id for pool in chain.partner_pools),
                     },
                 )
 
@@ -376,6 +376,7 @@ class FeeAllocator:
         logger.info("generating partner csv")
         output = []
         for chain in self.run_config.all_chains:
+            # Process alliance pools
             for alliance_pool in chain.alliance_pools:
                 member = next((m for m in self.run_config.alliance_config.alliance_members if alliance_pool.partner == m.name), None)
                 core_pool = next((p for p in chain.core_pools if p.pool_id == alliance_pool.pool_id), None)
@@ -398,7 +399,47 @@ class FeeAllocator:
                     "target": member.multisig_address,
                     "pool_type": "core" if core_pool else "non-core"
                 })
-
+            
+            # Process partner pools
+            if self.run_config.alliance_config.partners:
+                for partner_pool in chain.partner_pools:
+                    # Find the partner and their multisig
+                    partner = None
+                    multisig = None
+                    for p in self.run_config.alliance_config.partners:
+                        if any(pool.pool_id == partner_pool.pool_id for pool in p.pools):
+                            partner = p
+                            # For now, partners don't have a multisig field, so we'll use a placeholder
+                            # This should be updated when partner model includes multisig address
+                            multisig = f"PARTNER_{p.name}_MULTISIG"
+                            break
+                    
+                    if not partner:
+                        continue
+                        
+                    core_pool = next((p for p in chain.core_pools if p.pool_id == partner_pool.pool_id), None)
+                    noncore_pool = next((p for p in chain.partner_noncore_fee_data if p.pool_id == partner_pool.pool_id), None)
+                    
+                    if core_pool:
+                        partner_fee = core_pool.to_partner_usd
+                        pool_id = core_pool.pool_id
+                        pool_type = "core"
+                    elif noncore_pool:
+                        partner_fee = chain.get_partner_noncore_fee(partner_pool.pool_id)
+                        pool_id = noncore_pool.pool_id
+                        pool_type = "non-core"
+                    else:
+                        continue
+                    
+                    if partner_fee > 0:
+                        output.append({
+                            "pool_id": pool_id,
+                            "chain": chain.name,
+                            "partner": partner.name,
+                            "amount": partner_fee,
+                            "target": multisig,
+                            "pool_type": pool_type
+                        })
 
         df = pd.DataFrame(output)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
@@ -551,6 +592,13 @@ class FeeAllocator:
 
             for noncore_pool in chain.alliance_noncore_fee_data:
                 total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
+            
+            for noncore_pool in chain.partner_noncore_fee_data:
+                total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
+                
+            total_dao += chain.partner_noncore_to_dao_usd
+            total_vebal += chain.partner_noncore_to_vebal_usd
+            total_beets += chain.partner_noncore_to_beets_usd
 
         # Total distributed includes all allocations including partner fees
         total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner + total_beets

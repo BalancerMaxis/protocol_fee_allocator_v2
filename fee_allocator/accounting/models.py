@@ -72,6 +72,35 @@ class AllianceThresholds(BaseModel):
     v2_min_tvl: Decimal
 
 
+class PartnerPool(BaseModel):
+    """
+    Represents a partner pool with custom fee allocation.
+    """
+    pool_id: str
+    network: str
+    active: bool
+
+
+class PartnerFeeAllocation(BaseModel):
+    """
+    Represents the fee allocation configuration for partner pools.
+    """
+    vebal_share_pct: Decimal
+    vote_incentive_pct: Decimal
+    partner_share_pct: Decimal
+    dao_share_pct: Decimal
+
+
+class Partner(BaseModel):
+    """
+    Represents a partner with custom fee allocations.
+    """
+    name: str
+    active: bool
+    fee_allocations: dict[str, PartnerFeeAllocation]  # "core" and "non_core"
+    pools: list[PartnerPool]
+
+
 class AllianceConfig(BaseModel):
     """
     Represents the complete Alliance configuration including members and fee allocations.
@@ -80,6 +109,7 @@ class AllianceConfig(BaseModel):
     alliance_members: list[AllianceMember]
     alliance_fee_allocations: dict[str, AllianceFeeAllocation]
     alliance_thresholds: AllianceThresholds
+    partners: list[Partner] | None = None
 
     def get_pool_fee_config(self, pool_id: str, network: str, is_core: bool) -> AllianceFeeAllocation | None:
         """
@@ -90,4 +120,22 @@ class AllianceConfig(BaseModel):
             for pool in member.pools:
                 if pool.pool_id == pool_id and pool.network == network and pool.active:
                     return self.alliance_fee_allocations["core" if is_core else "non_core"]
+        return None
+    
+    def get_partner_pool_config(self, pool_id: str, network: str, is_core: bool) -> tuple[str, PartnerFeeAllocation] | None:
+        """
+        Returns the partner name and fee allocation configuration for a specific partner pool.
+        Returns None if the pool is not a partner pool.
+        """
+        if not self.partners:
+            return None
+            
+        for partner in self.partners:
+            if not partner.active:
+                continue
+            for pool in partner.pools:
+                if pool.pool_id == pool_id and pool.network == network and pool.active:
+                    fee_type = "core" if is_core else "non_core"
+                    if fee_type in partner.fee_allocations:
+                        return (partner.name, partner.fee_allocations[fee_type])
         return None
