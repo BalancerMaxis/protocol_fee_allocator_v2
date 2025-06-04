@@ -61,6 +61,14 @@ class AllianceFeeAllocation(BaseModel):
     dao_share_pct: Decimal
 
 
+class AllianceThresholds(BaseModel):
+    """
+    Represents threshold values for Alliance pool eligibility.
+    """
+    v3_min_tvl: Decimal
+    v2_min_tvl: Decimal
+
+
 class AllianceConfig(BaseModel):
     """
     Represents the complete Alliance configuration including members and fee allocations.
@@ -68,6 +76,7 @@ class AllianceConfig(BaseModel):
     """
     alliance_members: list[AllianceMember]
     alliance_fee_allocations: dict[str, AllianceFeeAllocation]
+    alliance_thresholds: AllianceThresholds
 
     def get_pool_fee_config(self, pool_id: str, network: str, is_core: bool) -> AllianceFeeAllocation | None:
         """
