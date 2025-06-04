@@ -218,12 +218,17 @@ class CorePoolChain(AbstractCorePoolChain):
         
         self.alliance_pools = []
         thresholds = self.chains.alliance_config.alliance_thresholds
-        
+
+        allocator_version = int(self.chains.protocol_version.replace("v", ""))
+
         for pool in all_alliance_pools:
             protocol_version = self.subgraph.get_pool_protocol_version(pool.pool_id)
             
             if protocol_version not in [2, 3]:
                 logger.warning(f"Alliance pool {pool.pool_id} has unknown protocol version {protocol_version}")
+                continue
+
+            if protocol_version != allocator_version:
                 continue
 
             tvl_threshold = thresholds.v2_min_tvl if protocol_version == 2 else thresholds.v3_min_tvl
