@@ -196,7 +196,7 @@ class CorePoolChain(AbstractCorePoolChain):
         self.block_range = self._set_block_range()
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
         self.core_pools: List[PoolFee] = []
-        self.alliance_noncore_fee_data: List[PoolFee] = []
+        self.alliance_noncore_fee_data: List[PoolFeeData] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = get_block_by_ts(self.chains.date_range[0], self)
@@ -206,14 +206,47 @@ class CorePoolChain(AbstractCorePoolChain):
     
     def _init_alliance_pools(self) -> None:
         """
-        Initialize alliance pools for the current chain
+        Initialize alliance pools for the current chain.
+        Uses TVL thresholds from alliance config to determine eligibility.
         """
-        self.alliance_pools = [
+        all_alliance_pools = [
             pool
             for member in self.chains.alliance_config.alliance_members
             for pool in member.pools
             if pool.network == self.name and pool.active
         ]
+        
+        self.alliance_pools = []
+        thresholds = self.chains.alliance_config.alliance_thresholds
+
+        allocator_version = int(self.chains.protocol_version.replace("v", ""))
+
+        for pool in all_alliance_pools:
+            protocol_version = self.subgraph.get_pool_protocol_version(pool.pool_id)
+            
+            if protocol_version not in [2, 3]:
+                logger.warning(f"Alliance pool {pool.pool_id} has unknown protocol version {protocol_version}")
+                continue
+
+            if protocol_version != allocator_version:
+                continue
+
+            tvl_threshold = thresholds.v2_min_tvl if protocol_version == 2 else thresholds.v3_min_tvl
+            
+            if tvl_threshold == 0:
+                self.alliance_pools.append(pool)
+                logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                continue
+            
+            try:
+                tvl = self.bal_pools_gauges.get_pool_tvl(pool.pool_id)
+                if tvl >= tvl_threshold:
+                    self.alliance_pools.append(pool)
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
+                else:
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
+            except Exception as e:
+                logger.error(f"Failed to get TVL for v{protocol_version} Alliance pool {pool.pool_id}: {e}")
 
     def set_pool_fee_data(self):
         """
@@ -395,6 +428,17 @@ class CorePoolChain(AbstractCorePoolChain):
             )
         except NoPricesFoundError:
             return None
+        
+    def get_alliance_noncore_partner_fee(self, pool_id: str) -> Decimal:
+        noncore_pool = next((p for p in self.alliance_noncore_fee_data if p.pool_id == pool_id), None)
+        if not noncore_pool or self.alliance_noncore_fees_collected == 0:
+            return Decimal(0)
+            
+        return (
+            noncore_pool.total_earned_fees_usd_twap / self.alliance_noncore_fees_collected
+            * self.alliance_noncore_fees_collected
+            * self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
+        )
 
     @staticmethod
     def _get_latest_snapshot(
