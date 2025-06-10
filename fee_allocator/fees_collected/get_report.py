@@ -24,12 +24,15 @@ def get_report(start_date, end_date, env_id):
     response.raise_for_status()
     # breakpoint()
     report = response.json()["depositors"]
-    total = 0
-    for chain, amount in report.items():
-        report[chain] = int(amount)
-        total += int(amount)
+    
+    cleaned_report = {
+        chain.replace("-v3", "") if chain.endswith("-v3") else chain: int(amount)
+        for chain, amount in report.items()
+    }
+    
+    total = sum(cleaned_report.values())
     if total > 0:
-        return report
+        return cleaned_report
     else:
         raise ValueError("Sum of collected fees is not > 0")
 
