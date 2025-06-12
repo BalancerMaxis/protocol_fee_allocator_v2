@@ -44,7 +44,7 @@ def chain(run_config, web3):
 
 @pytest.fixture
 def allocator(fee_period):
-    input_fees = {"mainnet": Decimal("1000.0")}
+    input_fees = {"mainnet": Decimal("10000000.0")}
 
     return FeeAllocator(
         input_fees, 
