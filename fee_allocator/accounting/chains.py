@@ -163,6 +163,11 @@ class CorePoolRunConfig:
     def total_fees_collected_usd(self) -> Decimal:
         return sum(chain.fees_collected for chain in self.all_chains)
 
+    @property
+    @round(4)
+    def total_to_vebal_usd(self) -> Decimal:
+        return sum(chain.total_to_vebal_usd for chain in self.all_chains)
+
 
 class CorePoolChain(AbstractCorePoolChain):
     """
@@ -494,3 +499,9 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     def alliance_noncore_to_vebal_usd(self) -> Decimal:
         return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct
+
+    @property
+    @round(4)
+    def total_to_vebal_usd(self) -> Decimal:
+        core_vebal = sum(pool.to_vebal_usd for pool in self.core_pools)
+        return core_vebal +  self.noncore_to_vebal_usd + self.alliance_noncore_to_vebal_usd

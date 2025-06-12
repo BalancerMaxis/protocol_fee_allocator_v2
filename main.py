@@ -5,8 +5,10 @@ import pytz
 
 from dotenv import load_dotenv
 
+from pathlib import Path
 from fee_allocator.fee_allocator import FeeAllocator
 from fee_allocator.utils import get_last_thursday_odd_week, fetch_collected_fees
+from fee_allocator.payload_visualizer import visualize_payload
 
 
 parser = argparse.ArgumentParser()
@@ -19,6 +21,7 @@ parser.add_argument(
 )
 parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
 parser.add_argument("--protocol_version", help="Protocol version (v2 or v3)", type=str, choices=["v2", "v3"], default="v2")
+parser.add_argument("--no-visualize", help="Skip payload visualization", action="store_true", default=False)
 
 ROOT = os.path.dirname(__file__)
 
@@ -51,8 +54,16 @@ def main() -> None:
     fee_allocator.generate_incentives_csv()
     bribe_file_name = fee_allocator.generate_bribe_csv()
     partner_file_name = fee_allocator.generate_partner_csv()
-    fee_allocator.generate_bribe_payload(bribe_file_name, partner_csv=partner_file_name)
+    payload_path = fee_allocator.generate_bribe_payload(bribe_file_name, partner_csv=partner_file_name)
     fee_allocator.generate_noncore_csv()
+    
+    # Visualize the final payload
+    if not args.no_visualize:
+        print("\n" + "="*80 + "\n")
+        fee_file_name = args.fees_file_name or f"{args.protocol_version}_fees_{start_date}_{end_date}.json"
+        fee_file_path = Path(f"fee_allocator/fees_collected/{fee_file_name}")
+        visualize_payload(payload_path, [fee_file_path] if fee_file_path.exists() else None)
+        print("\n" + "="*80 + "\n")
 
 
 if __name__ == "__main__":

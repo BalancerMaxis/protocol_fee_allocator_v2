@@ -76,12 +76,13 @@ class FeeAllocator:
     def redistribute_fees(self):
         """
         Redistributes fees among pools based on minimum incentive amounts and chain-specific rules.
+
         This method performs the following steps:
-        1. Identifies pools with incentives below the minimum threshold.
-        2. Redistributes fees from these pools to eligible pools above the threshold.
-        3. Recalculates incentive amounts for Aura and Balancer.
-        4. Adjusts DAO and veBAL shares based on the original distribution.
-        5. Handles Aura minimum incentives with and without a buffer.
+        1. Identifies pools with total incentives below the minimum threshold ($500)
+        2. Redistributes fees from these pools to eligible pools above the threshold
+        3. Recalculates incentive amounts for Aura and Balancer based on veBAL share
+        4. Calls _handle_aura_min twice (with and without buffer) to enforce AURA minimums
+        5. Calls _filter_dusty_bal_incentives to handle dust amounts and final redistribution
         """
         min_amount = self.run_config.fee_config.min_vote_incentive_amount
         
@@ -115,11 +116,13 @@ class FeeAllocator:
 
     def _handle_aura_min(self, buffer=0):
         """
-        ensures all pools meet the minimum AURA incentive threshold.
-        
-        pools below the threshold have their aura moved to bal, then that amount is
-        redistributed from other pools BAL to AURA to maintain the minimum.
-        runs iteratively until all pools meet the threshold or no more transfers are possible
+        Ensures all pools meet the minimum AURA incentive threshold.
+
+        1. Identifies pools below the minimum AURA threshold (or with BAL-only overrides)
+        2. Moves their AURA amounts to BAL, creating a "debt" to be redistributed
+        3. Redistributes this debt from other pools' BAL to AURA proportionally
+        4. Ensures donor pools maintain the minimum threshold after transfers
+        5. Repeats until all pools meet the threshold or no more transfers are possible
         """
         min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive * (1 - buffer))
         for chain in self.run_config.all_chains:
@@ -181,11 +184,58 @@ class FeeAllocator:
                     break
 
     def _filter_dusty_bal_incentives(self):
+        """
+        Handles dust BAL amounts (<$75). Only moves to AURA if it results in meaningful AURA.
+        If a pool ends up with no meaningful incentives after dust handling, redistribute.
+        """
+        min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive)
+        dust_threshold = Decimal(75)
+        
         for chain in self.run_config.all_chains:
+            pools_to_zero = []
+            
             for pool in chain.core_pools:
-                if pool.to_bal_incentives_usd < Decimal(75):
-                    pool.to_aura_incentives_usd += pool.to_bal_incentives_usd
-                    pool.to_bal_incentives_usd = Decimal(0)
+                if pool.total_to_incentives_usd == 0:
+                    continue
+                    
+                # If pool has dust BAL, try to move to AURA
+                if 0 < pool.to_bal_incentives_usd < dust_threshold:
+                    potential_aura = pool.to_aura_incentives_usd + pool.to_bal_incentives_usd
+                    if potential_aura >= min_aura_incentive:
+                        pool.to_aura_incentives_usd = potential_aura
+                        pool.to_bal_incentives_usd = Decimal(0)
+                
+                # After dust handling, if pool has no AURA and only dust BAL, it can't provide meaningful incentives
+                if pool.to_aura_incentives_usd < min_aura_incentive and pool.to_bal_incentives_usd < dust_threshold:
+                    pools_to_zero.append(pool)
+            
+            # Redistribute from pools that can't provide meaningful incentives
+            if pools_to_zero:
+                pools_to_receive = [p for p in chain.core_pools if p not in pools_to_zero and p.total_to_incentives_usd > 0]
+                
+                if pools_to_receive:
+                    total_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_zero)
+                    total_weight = sum(p.total_earned_fees_usd_twap for p in pools_to_receive)
+                    
+                    # Zero out pools that can't provide meaningful incentives
+                    for pool in pools_to_zero:
+                        pool.redirected_incentives_usd -= pool.total_to_incentives_usd
+                        pool.to_aura_incentives_usd = Decimal(0)
+                        pool.to_bal_incentives_usd = Decimal(0)
+                        pool.total_to_incentives_usd = Decimal(0)
+                    
+                    # Redistribute to viable pools
+                    for pool in pools_to_receive:
+                        weight = pool.total_earned_fees_usd_twap / total_weight
+                        amount = total_to_redistribute * weight
+                        pool.total_to_incentives_usd += amount
+                        pool.redirected_incentives_usd += amount
+                        
+                        # Add to whichever platform already has more
+                        if pool.to_aura_incentives_usd >= pool.to_bal_incentives_usd:
+                            pool.to_aura_incentives_usd += amount
+                        else:
+                            pool.to_bal_incentives_usd += amount
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")
@@ -339,7 +389,9 @@ class FeeAllocator:
 
 
         df = pd.DataFrame(output)
-        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_partner.csv"
+        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
+        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_partner_{start_date}_{end_date}.csv"
         output_path.parent.mkdir(exist_ok=True)
         df.to_csv(output_path, index=False)
         return output_path
@@ -348,9 +400,18 @@ class FeeAllocator:
         self,
         input_csv: str,
         output_path: Path = Path("fee_allocator/payloads"),
-        partner_csv: str = None
+        partner_csv: str = None,
+        include_bal_transfer: bool = True
     ) -> Path:
-        """builds a safe payload from the bribe csv"""
+        """builds a safe payload from the bribe csv
+        
+        Args:
+            input_csv: Path to the bribe CSV file
+            output_path: Directory to save the payload JSON
+            partner_csv: Optional path to partner CSV file
+            include_bal_transfer: Whether to include BAL transfer to veBAL (default True)
+                                Set to False for v2 in combined mode to avoid duplication
+        """
         logger.info("generating payload")
         builder = SafeTxBuilder(self.book["multisigs/fees"])
         usdc = SafeContract(self.book["tokens/USDC"], abi_file_path=f"{base_dir}/abi/ERC20.json")
@@ -402,54 +463,27 @@ class FeeAllocator:
 
         datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
 
-        if self.run_config.protocol_version == "v2":
-            output_path = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
-            builder.output_payload(output_path)
-            return output_path
-
-        v2_file = PROJECT_ROOT / output_path / f"v2_{datetime_file_header}.json"
+        # Calculate veBAL amounts from actual allocations
+        vebal_usdc_amount = int(self.run_config.total_to_vebal_usd * Decimal(1e6))
         
-        if not v2_file.exists():
-            raise FileNotFoundError(f"V2 payload not found at {v2_file}. Run V2 allocation first.")
-        
-        with open(v2_file) as f:
-            v2_payload = json.load(f)
-        
-        v2_usdc_spent = 0
-        for tx in v2_payload["transactions"]:
-            if tx["to"].lower() == self.book["tokens/USDC"].lower():
-                if tx["contractMethod"]["name"] == "transfer":
-                    v2_usdc_spent += int(tx["contractInputsValues"]["_value"])
-            elif tx["to"].lower() in [
-                self.book["hidden_hand2/balancer_briber"].lower(),
-                self.book["hidden_hand2/aura_briber"].lower()
-            ]:
-                if tx["contractMethod"]["name"] == "depositBribe":
-                    if tx["contractInputsValues"]["_token"].lower() == self.book["tokens/USDC"].lower():
-                        v2_usdc_spent += int(tx["contractInputsValues"]["_amount"])
+        # Get BAL balance (only if enabled)
+        if include_bal_transfer:
+            vebal_bal_amount = (
+                self.run_config.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
+                .functions.balanceOf(builder.safe_address)
+                .call()
+            )
+        else:
+            vebal_bal_amount = 0
 
-        total_usdc_spent = v2_usdc_spent + total_bribe_usdc + dao_fee_usdc + partner_fee_usdc_spent
-        vebal_usdc_amount = int(
-            self.run_config.mainnet.web3.eth.contract(usdc.address, abi=get_abi("ERC20"))
-            .functions.balanceOf(builder.safe_address)
-            .call()
-            - total_usdc_spent
-            - 1  # Buffer
-        )
-
-        vebal_bal_amount = (
-            self.run_config.mainnet.web3.eth.contract(bal.address, abi=get_abi("ERC20"))
-            .functions.balanceOf(builder.safe_address)
-            .call()
-        )
-
+        # Transfer to veBAL injector
         if vebal_usdc_amount > 0:
             usdc.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_usdc_amount)
         if vebal_bal_amount > 0:
             bal.transfer(self.book["maxiKeepers/veBalFeeInjector"], vebal_bal_amount)
 
-        # Save combined payload (V2 + V3 + final transfers)
-        output_path = PROJECT_ROOT / output_path / f"v3_{datetime_file_header}.json"
+        # Save payload with protocol version prefix
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_{datetime_file_header}.json"
         builder.output_payload(output_path)
         
         return output_path
@@ -511,11 +545,6 @@ class FeeAllocator:
         # Only check Aura share against BAL for core pool incentives
         core_pool_incentives = total_aura + total_bal
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
-        target_share = self.run_config.aura_vebal_share
-
-        # new fee model breaks this check
-        # assert abs(aura_share - target_share) < Decimal('0.05'), \
-        #     f"Aura share {aura_share} deviates from target {target_share}"
 
         summary = {
             "feesCollected": float(round(total_fees, 2)),
