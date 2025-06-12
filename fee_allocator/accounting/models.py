@@ -27,7 +27,7 @@ class GlobalFeeConfig(BaseModel):
     noncore_dao_share_pct: Decimal
     
     # Beets fee split (https://forum.balancer.fi/t/bip-800-deploy-balancer-v3-on-op-mainnet)
-    # beets_share_pct: Decimal
+    beets_share_pct: Decimal
 
 
 class AlliancePool(BaseModel):
