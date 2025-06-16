@@ -2,6 +2,7 @@ import argparse
 import json
 from pathlib import Path
 from datetime import datetime
+from web3 import Web3
 
 
 def merge_duplicate_transfers(transactions: list) -> list:
@@ -16,7 +17,11 @@ def merge_duplicate_transfers(transactions: list) -> list:
         
         if method_name == "transfer":
             # Create unique key for transfer transactions
-            key = (tx["to"], tx["contractMethod"]["name"], tx["contractInputsValues"]["_to"])
+            key = (
+                Web3.to_checksum_address(tx["to"]),
+                tx["contractMethod"]["name"],
+                Web3.to_checksum_address(tx["contractInputsValues"]["_to"])
+            )
             
             if key in transfer_groups:
                 # Add to existing amount
@@ -29,7 +34,11 @@ def merge_duplicate_transfers(transactions: list) -> list:
                 
         elif method_name == "approve":
             # Create unique key for approval transactions
-            key = (tx["to"], tx["contractMethod"]["name"], tx["contractInputsValues"]["_spender"])
+            key = (
+                Web3.to_checksum_address(tx["to"]),
+                tx["contractMethod"]["name"],
+                Web3.to_checksum_address(tx["contractInputsValues"]["_spender"])
+            )
             
             if key in approval_groups:
                 # For approvals, sum the amounts (same as transfers)
