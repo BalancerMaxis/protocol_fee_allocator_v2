@@ -289,14 +289,6 @@ Total Transactions: [bold]{total_txs}[/bold]
                 self.console.print(table)
                 self.console.print()
         
-        # Footer
-        footer = Panel(
-            "[dim]Use this visualization to verify the payload before execution[/dim]",
-            box=box.SIMPLE,
-            border_style="dim"
-        )
-        self.console.print(footer)
-
 
 def visualize_payload(payload_path: Path, fee_files: List[Path] = None):
     """Convenience function to visualize a payload"""

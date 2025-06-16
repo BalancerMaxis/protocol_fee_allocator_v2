@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple, Optional
 import pytz
 import requests
 from fee_allocator.constants import HH_API_URL
@@ -28,7 +28,7 @@ EXPLORER_URLS = {
 
 def get_last_thursday_odd_week():
     # Use the current UTC date and time
-    current_datetime = datetime.utcnow().replace(tzinfo=pytz.utc)
+    current_datetime = datetime.now(pytz.UTC)
 
     # Calculate the difference between the current weekday and Thursday (where Monday is 0 and Sunday is 6)
     days_since_thursday = (current_datetime.weekday() - 3) % 7
@@ -110,4 +110,38 @@ def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = N
         with open(local_path) as f:
             return json.load(f)
 
-    raise FileNotFoundError(f"Could not find fees file {filename}")
+
+def parse_date_inputs(
+    date_range_string: Optional[str] = None, 
+    ts_now: Optional[int] = None, 
+    ts_in_the_past: Optional[int] = None
+) -> Tuple[int, int, str, str]:
+    now = datetime.now(pytz.UTC)
+    DELTA = 6000
+    default_ts_now = int(now.timestamp()) - DELTA
+    default_ts_past = int(get_last_thursday_odd_week().timestamp())
+    
+    if date_range_string:
+        try:
+            start_date_str, end_date_str = date_range_string.split('_')
+            # Parse dates to ensure they're valid
+            start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+            
+            # Convert to timestamps
+            ts_in_the_past = int(start_dt.timestamp())
+            ts_now = int(end_dt.timestamp())
+            
+            return ts_in_the_past, ts_now, start_date_str, end_date_str
+        except ValueError:
+            raise ValueError(f"Invalid date_range_string format. Expected YYYY-MM-DD_YYYY-MM-DD, got: {date_range_string}")
+    else:
+        # Use timestamps if provided, otherwise use defaults
+        ts_now = ts_now or default_ts_now
+        ts_in_the_past = ts_in_the_past or default_ts_past
+        
+        start_date = datetime.fromtimestamp(ts_in_the_past, tz=pytz.UTC).strftime("%Y-%m-%d")
+        end_date = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")
+        
+        return ts_in_the_past, ts_now, start_date, end_date
+

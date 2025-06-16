@@ -429,8 +429,8 @@ class FeeAllocator:
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
 
-        total_bribe_usdc = sum(int(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
-        dao_fee_usdc = int(payment_df["amount"] * 1e6)
+        total_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
+        dao_fee_usdc = round(payment_df["amount"] * 1e6)
 
         """bribe txs"""
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
@@ -439,7 +439,7 @@ class FeeAllocator:
             if int(row["amount"]) == 0:
                 continue
             prop_hash = self._get_prop_hash(row["platform"], row["target"])
-            mantissa = int(row["amount"] * 1e6)
+            mantissa = round(row["amount"] * 1e6)
 
             if row["platform"] == "balancer":
                 bal_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 2)
@@ -455,7 +455,7 @@ class FeeAllocator:
                 partner_df = pd.read_csv(partner_csv)
                 for _, row in partner_df.iterrows():
                     if row["amount"] > 0:
-                        partner_amount = int(row["amount"] * 1e6)
+                        partner_amount = round(row["amount"] * 1e6)
                         partner_fee_usdc_spent += partner_amount
                         usdc.transfer(row["target"], partner_amount)
             except pd.errors.EmptyDataError:
@@ -463,8 +463,7 @@ class FeeAllocator:
 
         datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
 
-        # Calculate veBAL amounts from actual allocations
-        vebal_usdc_amount = int(self.run_config.total_to_vebal_usd * Decimal(1e6))
+        vebal_usdc_amount = round(float(self.run_config.total_to_vebal_usd) * 1e6)
         
         # Get BAL balance (only if enabled)
         if include_bal_transfer:
@@ -531,8 +530,8 @@ class FeeAllocator:
             total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
             total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
 
-            for alliance_pool in chain.alliance_pools:
-                total_partner += chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
+            for noncore_pool in chain.alliance_noncore_fee_data:
+                total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
 
         # Total distributed includes all allocations including partner fees
         total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner
