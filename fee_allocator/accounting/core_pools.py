@@ -101,7 +101,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         override_cls = overrides.get(self.pool_id)
         self.override = override_cls(self) if override_cls else None
 
-    
     def _check_if_alliance_pool(self) -> bool:
         in_config = self.chain.chains.alliance_config.get_pool_fee_config(self.pool_id, self.chain.name, True) is not None
         if not in_config:
@@ -173,10 +172,11 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.earned_fee_share_of_chain_usd * core_fees * vebal_share_pct
 
     def _to_partner_usd(self) -> Decimal:
+        core_fees = self._core_pool_allocation()
         if self.is_alliance_pool:
             return (
                 self.earned_fee_share_of_chain_usd
-                * self.chain.total_earned_fees_usd_twap
+                * core_fees
                 * self.alliance_fee_config.partner_share_pct
             )
         return Decimal(0)
