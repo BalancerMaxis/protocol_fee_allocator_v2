@@ -100,3 +100,14 @@ jobs:
           branch-suffix: timestamp
           delete-branch: true
           labels: "Biweekly-Report"
+      
+    outputs:
+      pr_number: ${{ steps.cpr.outputs.pull-request-number }}
+
+  comment_report:
+    needs: process_fees
+    if: needs.process_fees.outputs.pr_number
+    uses: ./.github/workflows/comment_payload_report.yaml
+    with:
+      pr_number: ${{ needs.process_fees.outputs.pr_number }}
+    secrets: inherit

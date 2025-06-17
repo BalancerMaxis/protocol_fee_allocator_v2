@@ -1,7 +1,12 @@
 name: Comment Payload Report on PR
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+  pull_request_target:
     types: [opened, synchronize]
     paths:
       - 'fee_allocator/payloads/*.json'
@@ -19,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
 
       - name: Find report
@@ -54,9 +59,17 @@ jobs:
               reportContent = reportContent.substring(0, 60000) + '\n\n*Report truncated due to size limits*';
             }
             
+            // Determine PR number from either workflow_call or pull_request_target
+            const pr_number = '${{ inputs.pr_number }}' || (context.issue ? context.issue.number : null);
+            
+            if (!pr_number) {
+              console.log('No PR number found');
+              return;
+            }
+            
             // Find existing comment
             const comments = await github.rest.issues.listComments({
-              issue_number: context.issue.number,
+              issue_number: pr_number,
               owner: context.repo.owner,
               repo: context.repo.repo
             });
@@ -79,7 +92,7 @@ jobs:
             } else {
               // Create new comment
               await github.rest.issues.createComment({
-                issue_number: context.issue.number,
+                issue_number: pr_number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 body: body
