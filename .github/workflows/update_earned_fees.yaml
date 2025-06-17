@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: "biweekly-runs"
+          ref: "collect-fees-cron"
 
       - name: Setup Python 3.10
         uses: actions/setup-python@v5
@@ -30,6 +30,11 @@ jobs:
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          EXPLORER_API_KEY_MAINNET: ${{ secrets.EXPLORER_API_KEY_MAINNET }}
+          EXPLORER_API_KEY_ARBITRUM: ${{ secrets.EXPLORER_API_KEY_ARBITRUM }}
+          EXPLORER_API_KEY_POLYGON: ${{ secrets.EXPLORER_API_KEY_POLYGON }}
+          EXPLORER_API_KEY_BASE: ${{ secrets.EXPLORER_API_KEY_BASE }}
+          EXPLORER_API_KEY_GNOSIS: ${{ secrets.EXPLORER_API_KEY_GNOSIS }}
         run: |
           pwd
           python generate_earned_fees.py
@@ -37,6 +42,6 @@ jobs:
       - name: Commit CSV files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          branch: "biweekly-runs"
+          branch: "collect-fees-cron"
           file_pattern: "fee_allocator/allocations/incentives/current_fees/*_earned_fees_*.csv"
           commit_message: "ci: update core pool earned fees CSVs"
