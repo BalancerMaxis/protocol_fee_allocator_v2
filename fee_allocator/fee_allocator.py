@@ -10,13 +10,13 @@ from pathlib import Path
 from web3 import Web3
 from dotenv import load_dotenv
 import json
-import math
 
 from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
 from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.utils import get_hh_aura_target
 from fee_allocator.logger import logger
+from fee_allocator.payload_visualizer import save_markdown_report
 
 load_dotenv()
 
@@ -577,3 +577,24 @@ class FeeAllocator:
         data.append(summary)
         with open(recon_file, "w") as f:
             json.dump(data, f, indent=2)
+
+    def generate_report(self, payload_path: Path, fee_files: List[Path] = None) -> Path:
+        """
+        Generate a markdown report for the payload.
+        """
+        # For protocol-specific reports, we want to preserve the protocol version in the filename
+        payload_name = payload_path.stem
+        if payload_name.startswith(("v2_", "v3_")):
+            date_str = payload_name[3:]
+        else:
+            date_str = payload_name
+            
+        if self.run_config.protocol_version:
+            report_name = f"{self.run_config.protocol_version}_{date_str}.md"
+        else:
+            report_name = f"{date_str}.md"
+            
+        reports_dir = Path(PROJECT_ROOT) / "fee_allocator" / "reports"
+        report_path = reports_dir / report_name
+        
+        return save_markdown_report(payload_path, fee_files, output_path=report_path)

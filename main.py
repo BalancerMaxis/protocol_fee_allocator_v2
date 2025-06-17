@@ -57,12 +57,13 @@ def main() -> None:
     partner_file_name = fee_allocator.generate_partner_csv()
     payload_path = fee_allocator.generate_bribe_payload(bribe_file_name, partner_csv=partner_file_name)
     fee_allocator.generate_noncore_csv()
-    
-    # Visualize the final payload
+
+    fee_file_name = args.fees_file_name or f"{args.protocol_version}_fees_{start_date}_{end_date}.json"
+    fee_file_path = Path(f"fee_allocator/fees_collected/{fee_file_name}")
+    report_path = fee_allocator.generate_report(payload_path, [fee_file_path] if fee_file_path.exists() else None)
+
     if not args.no_visualize:
         print("\n" + "="*80 + "\n")
-        fee_file_name = args.fees_file_name or f"{args.protocol_version}_fees_{start_date}_{end_date}.json"
-        fee_file_path = Path(f"fee_allocator/fees_collected/{fee_file_name}")
         visualize_payload(payload_path, [fee_file_path] if fee_file_path.exists() else None)
         print("\n" + "="*80 + "\n")
 

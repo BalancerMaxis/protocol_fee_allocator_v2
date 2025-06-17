@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from fee_allocator.fee_allocator import FeeAllocator
 from fee_allocator.utils import fetch_collected_fees, parse_date_inputs
-from fee_allocator.payload_visualizer import visualize_combined_payload
+from fee_allocator.payload_visualizer import visualize_combined_payload, save_combined_report
 from combine_payloads import combine_payloads_from_paths
 
 
@@ -39,7 +39,7 @@ def main() -> None:
     ts_in_the_past, ts_now, start_date, end_date = parse_date_inputs(
         args.date_range_string, args.ts_now, args.ts_in_the_past
     )
-    
+
     # If date_range_string is provided, auto-construct fee file names if not explicitly provided
     if args.date_range_string:
         if not args.v2_fees_file_name:
@@ -74,7 +74,7 @@ def main() -> None:
     
     v3_allocator.allocate()
     v3_allocator.recon()
-    
+
     v3_allocator.generate_incentives_csv()
     v3_bribe_file = v3_allocator.generate_bribe_csv()
     v3_partner_file = v3_allocator.generate_partner_csv()
@@ -101,6 +101,10 @@ def main() -> None:
         
         visualize_combined_payload(combined_payload_path, v2_fee_file_path, v3_fee_file_path)
         print("\n" + "="*80 + "\n")
+
+    v2_fee_file_path = Path(f"fee_allocator/fees_collected/{v2_fee_file_name}")
+    v3_fee_file_path = Path(f"fee_allocator/fees_collected/{v3_fee_file_name}")
+    save_combined_report(combined_payload_path, v2_fee_file_path, v3_fee_file_path)
 
 
 if __name__ == "__main__":

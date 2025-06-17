@@ -7,11 +7,7 @@ from collections import defaultdict
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.layout import Layout
-from rich.columns import Columns
-from rich.text import Text
 from rich import box
-from rich.tree import Tree
 
 from bal_addresses import AddrBook
 
@@ -22,7 +18,7 @@ class PayloadVisualizer:
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
-        
+
         # Known addresses for better display
         self.known_addresses = {
             self.book.get("maxiKeepers/veBalFeeInjector", "").lower(): "veBAL Fee Injector",
@@ -91,59 +87,208 @@ class PayloadVisualizer:
                 groups["Other Transactions"].append(tx)
         
         return dict(groups)
-    
-    def create_summary_panel(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0)) -> Panel:
-        """Create summary statistics panel"""
-        total_txs = len(payload["transactions"])
-        
-        # Calculate totals
-        total_bribes_usdc = Decimal(0)
-        total_dao_usdc = Decimal(0)
-        total_vebal_usdc = Decimal(0)
-        total_vebal_bal = Decimal(0)
-        total_partner_usdc = Decimal(0)
+
+    def calculate_totals(self, groups: Dict[str, List[Dict]]) -> Dict[str, Decimal]:
+        """Calculate all totals from grouped transactions"""
+        totals = {
+            "bribes_usdc": Decimal(0),
+            "dao_usdc": Decimal(0),
+            "vebal_usdc": Decimal(0),
+            "vebal_bal": Decimal(0),
+            "partner_usdc": Decimal(0),
+        }
         
         for group_name, txs in groups.items():
             for tx in txs:
                 if "Bribe" in group_name:
                     if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        total_bribes_usdc += Decimal(tx["contractInputsValues"]["_amount"])
+                        totals["bribes_usdc"] += Decimal(tx["contractInputsValues"]["_amount"])
                 elif group_name == "veBAL Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        total_vebal_usdc += Decimal(tx["contractInputsValues"]["_value"])
+                        totals["vebal_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
                     elif tx.get("to", "").lower() == self.book.get("tokens/BAL", "").lower():
-                        total_vebal_bal += Decimal(tx["contractInputsValues"]["_value"])
+                        totals["vebal_bal"] += Decimal(tx["contractInputsValues"]["_value"])
                 elif group_name == "DAO Transfers":
-                    total_dao_usdc += Decimal(tx["contractInputsValues"]["_value"])
+                    totals["dao_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
                 elif group_name == "Partner Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        total_partner_usdc += Decimal(tx["contractInputsValues"]["_value"])
+                        totals["partner_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
         
-        total_usdc_distributed = total_bribes_usdc + total_dao_usdc + total_vebal_usdc + total_partner_usdc
+        totals["total_usdc"] = totals["bribes_usdc"] + totals["dao_usdc"] + totals["vebal_usdc"] + totals["partner_usdc"]
+        return totals
+    
+    def extract_transaction_data(self, group_name: str, tx: Dict) -> Dict[str, str]:
+        """Extract formatted data from a transaction based on its type"""
+        data = {}
+        
+        if "Bribe" in group_name:
+            data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
+            data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
+            data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
+        
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+            data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
+            amount = tx.get("contractInputsValues", {}).get("_value", "0")
+            token_addr = tx.get("to", "")
+            
+            if token_addr.lower() == self.book.get("tokens/USDC", "").lower():
+                data["col2"] = self.format_amount(amount, "USDC")
+                data["col3"] = "USDC"
+            elif token_addr.lower() == self.book.get("tokens/BAL", "").lower():
+                data["col2"] = self.format_amount(amount, "BAL")
+                data["col3"] = "BAL"
+            else:
+                data["col2"] = amount
+                data["col3"] = self.format_address(token_addr)
+        
+        elif group_name == "Token Approvals":
+            data["col1"] = self.format_address(tx.get("to", ""))
+            data["col2"] = self.format_address(tx.get("contractInputsValues", {}).get("_spender", ""))
+            data["col3"] = self.format_amount(tx.get("contractInputsValues", {}).get("_value", "0"))
+        
+        return data
+    
+    def get_table_headers(self, group_name: str) -> List[str]:
+        """Get table headers based on transaction group"""
+        if "Bribe" in group_name:
+            return ["Gauge/Proposal", "Amount", "Token"]
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+            return ["Recipient", "Amount", "Token"]
+        elif group_name == "Token Approvals":
+            return ["Token", "Spender", "Amount"]
+        return ["Field 1", "Field 2", "Field 3"]
+    
+    def generate_markdown_summary(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0)) -> str:
+        """Generate markdown version of the summary"""
+        total_txs = len(payload["transactions"])
+        totals = self.calculate_totals(groups)
+        
+        md = ["## 📊 Payload Summary\n"]
+        md.append(f"**Total Transactions:** {total_txs}\n")
+        
+        md.append("### USDC Allocations")
+        md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
+        md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
+        md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
+        md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
+        md.append("")
+        
+        md.append("### veBAL Transfers")
+        md.append(f"- **USDC:** {self.format_amount(str(totals['vebal_usdc']))}")
+        md.append(f"- **BAL:** {self.format_amount(str(totals['vebal_bal']), 'BAL')}")
+        md.append("")
+        
+        md.append(f"### 💰 **TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))}**")
+        
+        if total_fees_collected > 0:
+            percentage = (totals['total_usdc'] / total_fees_collected) * 100
+            md.append(f"\n**Allocation Efficiency:** {percentage:.2f}% of collected fees")
+            
+            # Show discrepancy if any
+            discrepancy_usd = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
+            if abs(discrepancy_usd) > Decimal("0.01"):
+                md.append(f"**⚠️ Discrepancy:** ${discrepancy_usd:,.2f}")
+        
+        return "\n".join(md)
+    
+    def generate_markdown_table(self, group_name: str, transactions: List[Dict]) -> str:
+        """Generate markdown table for a group of transactions"""
+        md = [f"\n### {group_name} ({len(transactions)} transactions)\n"]
+        
+        headers = self.get_table_headers(group_name)
+        md.append(f"| {' | '.join(headers)} |")
+        md.append(f"|{' | '.join(['-------'] * len(headers))} |")
+        
+        for tx in transactions:
+            data = self.extract_transaction_data(group_name, tx)
+            md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} |")
+        
+        return "\n".join(md)
+    
+    def export_markdown(self, payload_path: Path, fee_files: List[Path] = None) -> str:
+        """Export payload visualization as markdown"""
+        # Load payload
+        payload = self.parse_payload(payload_path)
+        
+        # Load fee files if provided
+        total_fees_collected = Decimal(0)
+        fee_details = []
+        if fee_files:
+            for fee_file in fee_files:
+                if fee_file.exists():
+                    with open(fee_file) as f:
+                        fees_data = json.load(f)
+                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
+                    total_fees_collected += file_total
+                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        
+        # Group transactions
+        groups = self.group_transactions(payload["transactions"])
+        
+        # Build markdown
+        md = ["# Fee Allocator Payload Report\n"]
+        md.append(f"**File:** {payload_path.name}")
+        md.append(f"**Created:** {payload['meta'].get('name', 'Unknown')}")
+        
+        if fee_details:
+            md.append("\n## Fees Collected")
+            for detail in fee_details:
+                md.append(f"- {detail}")
+            md.append(f"- **Total:** ${total_fees_collected/Decimal(1e6):,.2f}")
+        
+        md.append("")
+        
+        # Add summary
+        md.append(self.generate_markdown_summary(payload, groups, total_fees_collected))
+        
+        # Add transaction tables in priority order
+        priority_order = [
+            "Aura Bribes",
+            "Balancer Bribes", 
+            "veBAL Transfers",
+            "DAO Transfers",
+            "Partner Transfers",
+            "Token Approvals",
+            "Other Bribes",
+            "Other Transactions"
+        ]
+        
+        md.append("\n## Transaction Details")
+        
+        for group_name in priority_order:
+            if group_name in groups and groups[group_name]:
+                md.append(self.generate_markdown_table(group_name, groups[group_name]))
+        
+        return "\n".join(md)
+    
+    def create_summary_panel(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0)) -> Panel:
+        """Create summary statistics panel"""
+        total_txs = len(payload["transactions"])
+        totals = self.calculate_totals(groups)
         
         summary_text = f"""[bold cyan]Transaction Summary[/bold cyan]
         
 Total Transactions: [bold]{total_txs}[/bold]
 
 [bold yellow]USDC Allocations:[/bold yellow]
-• Vote Incentives: [green]{self.format_amount(str(total_bribes_usdc))}[/green]
-• DAO Fees: [blue]{self.format_amount(str(total_dao_usdc))}[/blue]
-• veBAL Fees: [magenta]{self.format_amount(str(total_vebal_usdc))}[/magenta]
-• Partner Fees: [yellow]{self.format_amount(str(total_partner_usdc))}[/yellow]
+• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]
+• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]
+• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]
+• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]
 
 [bold yellow]veBAL Transfers:[/bold yellow]
-• USDC: [green]{self.format_amount(str(total_vebal_usdc))}[/green]
-• BAL: [cyan]{self.format_amount(str(total_vebal_bal), "BAL")}[/cyan]
+• USDC: [green]{self.format_amount(str(totals['vebal_usdc']))}[/green]
+• BAL: [cyan]{self.format_amount(str(totals['vebal_bal']), "BAL")}[/cyan]
 
-[bold red on white] TOTAL USDC DISTRIBUTED: {self.format_amount(str(total_usdc_distributed))} [/bold red on white]
+[bold red on white] TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))} [/bold red on white]
 """
         
         if total_fees_collected > 0:
-            percentage = (total_usdc_distributed / total_fees_collected) * 100
+            percentage = (totals['total_usdc'] / total_fees_collected) * 100
             summary_text += f"\n[bold yellow]Allocation Efficiency:[/bold yellow] {percentage:.2f}% of collected fees"
             
             # Show discrepancy if any (convert to USD for display)
-            discrepancy_usd = (total_fees_collected - total_usdc_distributed) / Decimal(1e6)
+            discrepancy_usd = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
             if abs(discrepancy_usd) > Decimal("0.01"):
                 summary_text += f"\n[bold red]Discrepancy:[/bold red] ${discrepancy_usd:,.2f}"
         
@@ -171,56 +316,18 @@ Total Transactions: [bold]{total_txs}[/bold]
             border_style=style
         )
         
-        # Add columns based on transaction type
-        if "Bribe" in group_name:
-            table.add_column("Gauge/Proposal", style="dim")
-            table.add_column("Amount", justify="right", style="bold")
-            table.add_column("Token", style="dim")
-            
-            for tx in transactions:
-                prop_hash = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
-                amount = tx.get("contractInputsValues", {}).get("_amount", "0")
-                token = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
-                
-                table.add_row(
-                    prop_hash,
-                    self.format_amount(amount),
-                    token
-                )
+        # Add columns based on group
+        headers = self.get_table_headers(group_name)
+        styles = ["dim", "bold", "dim"] if "Approval" not in group_name else ["dim", "dim", "dim"]
+        justifies = ["left", "right", "left"]
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
-            table.add_column("Recipient", style="dim")
-            table.add_column("Amount", justify="right", style="bold")
-            table.add_column("Token", style="dim")
-            
-            for tx in transactions:
-                recipient = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
-                amount = tx.get("contractInputsValues", {}).get("_value", "0")
-                token_addr = tx.get("to", "")
-                
-                if token_addr.lower() == self.book.get("tokens/USDC", "").lower():
-                    amount_fmt = self.format_amount(amount, "USDC")
-                    token = "USDC"
-                elif token_addr.lower() == self.book.get("tokens/BAL", "").lower():
-                    amount_fmt = self.format_amount(amount, "BAL")
-                    token = "BAL"
-                else:
-                    amount_fmt = amount
-                    token = self.format_address(token_addr)
-                
-                table.add_row(recipient, amount_fmt, token)
+        for header, style_col, justify in zip(headers, styles, justifies):
+            table.add_column(header, style=style_col, justify=justify)
         
-        elif group_name == "Token Approvals":
-            table.add_column("Token", style="dim")
-            table.add_column("Spender", style="dim")
-            table.add_column("Amount", justify="right", style="dim")
-            
-            for tx in transactions:
-                token = self.format_address(tx.get("to", ""))
-                spender = self.format_address(tx.get("contractInputsValues", {}).get("_spender", ""))
-                amount = tx.get("contractInputsValues", {}).get("_value", "0")
-                
-                table.add_row(token, spender, self.format_amount(amount))
+        # Add rows
+        for tx in transactions:
+            data = self.extract_transaction_data(group_name, tx)
+            table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''))
         
         return table
     
@@ -305,3 +412,98 @@ def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3
         fee_files.append(v3_fees_file)
     
     visualize_payload(payload_path, fee_files)
+
+
+def export_markdown(payload_path: Path, fee_files: List[Path] = None) -> str:
+    """Export payload visualization as markdown"""
+    visualizer = PayloadVisualizer()
+    return visualizer.export_markdown(payload_path, fee_files)
+
+
+def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> str:
+    """Export combined payload visualization as markdown"""
+    fee_files = []
+    if v2_fees_file and v2_fees_file.exists():
+        fee_files.append(v2_fees_file)
+    if v3_fees_file and v3_fees_file.exists():
+        fee_files.append(v3_fees_file)
+    
+    return export_markdown(payload_path, fee_files)
+
+
+def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, output_path: Path = None) -> Path:
+    """Generate and save payload report to reports directory
+    
+    Args:
+        payload_path: Path to the payload JSON file
+        fee_files: Optional list of fee collection JSON files
+        output_path: Optional output path. If not provided, saves to reports directory
+        
+    Returns:
+        Path to the saved report
+    """
+    from fee_allocator.accounting import PROJECT_ROOT
+    
+    # Generate markdown content
+    markdown_content = export_markdown(payload_path, fee_files)
+    
+    if output_path is None:
+        # Extract date from payload filename
+        date_str = payload_path.stem
+        if date_str.startswith(("v2_", "v3_")):
+            date_str = date_str[3:]
+        
+        # Save to reports directory
+        reports_dir = Path(PROJECT_ROOT) / "fee_allocator" / "reports"
+        reports_dir.mkdir(exist_ok=True, parents=True)
+        output_path = reports_dir / f"{date_str}.md"
+    
+    output_path.write_text(markdown_content)
+    print(f"\nMarkdown report saved to: {output_path}")
+    return output_path
+
+
+def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> Path:
+    """Generate and save combined payload report to reports directory
+    
+    This is a convenience wrapper that handles the v2/v3 fee files specifically.
+    """
+    fee_files = []
+    if v2_fees_file and v2_fees_file.exists():
+        fee_files.append(v2_fees_file)
+    if v3_fees_file and v3_fees_file.exists():
+        fee_files.append(v3_fees_file)
+    
+    return save_markdown_report(payload_path, fee_files)
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Visualize fee allocator payload")
+    parser.add_argument("payload_file", type=Path, help="Path to payload JSON file")
+    parser.add_argument("--markdown", action="store_true", help="Export as markdown instead of rich output")
+    parser.add_argument("--output", type=Path, help="Output file for markdown export (defaults to reports directory)")
+    parser.add_argument("--v2-fees", type=Path, help="Path to v2 fees JSON file")
+    parser.add_argument("--v3-fees", type=Path, help="Path to v3 fees JSON file")
+    
+    args = parser.parse_args()
+    
+    if args.markdown:
+        markdown_content = export_combined_markdown(args.payload_file, args.v2_fees, args.v3_fees)
+        if args.output:
+            output_path = args.output
+        else:
+            # Default to reports directory with same filename as payload
+            reports_dir = Path(__file__).parent / "reports"
+            reports_dir.mkdir(exist_ok=True)
+            output_path = reports_dir / args.payload_file.with_suffix('.md').name
+            
+        if args.output or not output_path.exists():
+            output_path.parent.mkdir(exist_ok=True, parents=True)
+            output_path.write_text(markdown_content)
+            print(f"Markdown exported to {output_path}")
+        else:
+            print(markdown_content)
+    else:
+        visualize_combined_payload(args.payload_file, args.v2_fees, args.v3_fees)
