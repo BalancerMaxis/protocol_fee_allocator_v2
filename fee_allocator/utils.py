@@ -109,6 +109,8 @@ def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = N
     if os.path.exists(local_path):
         with open(local_path) as f:
             return json.load(f)
+        
+    raise FileNotFoundError(f"could not find input fees file at {local_path}")
 
 
 def parse_date_inputs(
