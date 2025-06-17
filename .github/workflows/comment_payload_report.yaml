@@ -1,0 +1,79 @@
+name: Comment Payload Report on PR
+
+on:
+  pull_request:
+    paths:
+      - 'fee_allocator/payloads/*.json'
+      - 'fee_allocator/reports/*.md'
+
+jobs:
+  comment-report:
+    runs-on: ubuntu-latest
+    # Only run on PRs from automated fee collection workflows
+    if: |
+      startsWith(github.head_ref, 'gha-biweekly-fees') || 
+      contains(github.event.pull_request.labels.*.name, 'Biweekly-Report')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find payload markdown report
+        id: find-report
+        run: |
+          # Find the most recent markdown report
+          REPORT_PATH=$(ls -t fee_allocator/reports/*.md 2>/dev/null | head -n 1)
+          
+          if [ -z "$REPORT_PATH" ]; then
+            echo "No markdown report found in fee_allocator/reports/"
+            exit 1
+          fi
+          
+          echo "Found report: $REPORT_PATH"
+          echo "path=$REPORT_PATH" >> $GITHUB_OUTPUT
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs');
+            const reportPath = '${{ steps.find-report.outputs.path }}';
+            let reportContent = fs.readFileSync(reportPath, 'utf8');
+            
+            // Truncate if too large
+            if (reportContent.length > 60000) {
+              reportContent = reportContent.substring(0, 60000) + '\n\n*Report truncated due to size limits*';
+            }
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            const botComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('## Fee Allocator Payload Report')
+            );
+            
+            const body = `## Fee Allocator Payload Report\n\n${reportContent}\n\n---\n<sub>This comment is automatically generated and will be updated when the payload changes.</sub>`;
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
