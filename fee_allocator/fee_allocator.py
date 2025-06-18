@@ -545,10 +545,15 @@ class FeeAllocator:
         core_pool_incentives = total_aura + total_bal
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
+        total_core_fees = sum(chain.total_earned_fees_usd_twap for chain in self.run_config.all_chains)
+        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected for chain in self.run_config.all_chains)
+        
         summary = {
             "feesCollected": float(round(total_fees, 2)),
             "totalDistributed": float(round(total_distributed, 2)),
             "feesNotDistributed": float(round(total_fees - total_distributed, 2)),
+            "coreFees": float(round(total_core_fees, 2)),
+            "noncoreFees": float(round(total_noncore_fees, 2)),
             "auraIncentives": float(round(total_aura, 2)),
             "balIncentives": float(round(total_bal, 2)),
             "feesToDao": float(round(total_dao, 2)),

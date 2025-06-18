@@ -56,6 +56,55 @@ class PayloadVisualizer:
         with open(payload_path) as f:
             return json.load(f)
     
+    def load_recon_data(self, payload_path: Path) -> Dict[str, Any]:
+        """Load reconciliation data for the payload"""
+        from fee_allocator.accounting import PROJECT_ROOT
+        
+        filename = payload_path.stem
+        if filename.startswith("v2_"):
+            recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/v2_recon.json"
+        elif filename.startswith("v3_"):
+            recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/v3_recon.json"
+        else:
+            v2_recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/v2_recon.json"
+            v3_recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries/v3_recon.json"
+            
+            v2_data = {}
+            v3_data = {}
+            
+            if v2_recon_file.exists():
+                with open(v2_recon_file) as f:
+                    v2_recon = json.load(f)
+                    if v2_recon:
+                        v2_data = v2_recon[-1]  # Get latest entry
+            
+            if v3_recon_file.exists():
+                with open(v3_recon_file) as f:
+                    v3_recon = json.load(f)
+                    if v3_recon:
+                        v3_data = v3_recon[-1]  # Get latest entry
+            
+            # Merge data
+            if v2_data and v3_data:
+                return {
+                    'coreFees': v2_data.get('coreFees', 0) + v3_data.get('coreFees', 0),
+                    'noncoreFees': v2_data.get('noncoreFees', 0) + v3_data.get('noncoreFees', 0)
+                }
+            elif v2_data:
+                return v2_data
+            elif v3_data:
+                return v3_data
+            else:
+                return {}
+        
+        if recon_file.exists():
+            with open(recon_file) as f:
+                recon_data = json.load(f)
+                if recon_data:
+                    return recon_data[-1]  # Return latest entry
+        
+        return {}
+    
     def group_transactions(self, transactions: List[Dict]) -> Dict[str, List[Dict]]:
         """Group transactions by type"""
         groups = defaultdict(list)
@@ -92,6 +141,8 @@ class PayloadVisualizer:
         """Calculate all totals from grouped transactions"""
         totals = {
             "bribes_usdc": Decimal(0),
+            "aura_bribes_usdc": Decimal(0),
+            "bal_bribes_usdc": Decimal(0),
             "dao_usdc": Decimal(0),
             "vebal_usdc": Decimal(0),
             "vebal_bal": Decimal(0),
@@ -102,7 +153,12 @@ class PayloadVisualizer:
             for tx in txs:
                 if "Bribe" in group_name:
                     if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        totals["bribes_usdc"] += Decimal(tx["contractInputsValues"]["_amount"])
+                        amount = Decimal(tx["contractInputsValues"]["_amount"])
+                        totals["bribes_usdc"] += amount
+                        if group_name == "Aura Bribes":
+                            totals["aura_bribes_usdc"] += amount
+                        elif group_name == "Balancer Bribes":
+                            totals["bal_bribes_usdc"] += amount
                 elif group_name == "veBAL Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["vebal_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
@@ -158,20 +214,98 @@ class PayloadVisualizer:
             return ["Token", "Spender", "Amount"]
         return ["Field 1", "Field 2", "Field 3"]
     
-    def generate_markdown_summary(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0)) -> str:
+    def calculate_core_pool_fees(self, recon_data: Dict = None) -> Decimal:
+        """Get core pool fees from reconciliation data.
+        """
+        if recon_data and 'coreFees' in recon_data:
+            # Use actual core fees from reconciliation data
+            return Decimal(str(recon_data['coreFees'])) * Decimal('1e6')  # Convert to raw USDC units
+        else:
+            # No recon data means we can't determine core fees
+            return Decimal('0')
+    
+    def calculate_allocation_metrics(self, totals: Dict[str, Decimal], total_fees_collected: Decimal, recon_data: Dict = None) -> Dict[str, Any]:
+        """Calculate allocation percentages and validation metrics"""
+        metrics = {}
+        
+        if totals['total_usdc'] > 0:
+            metrics['bribes_pct'] = (totals['bribes_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            metrics['dao_pct'] = (totals['dao_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            metrics['vebal_pct'] = (totals['vebal_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            metrics['partner_pct'] = (totals['partner_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            
+            # Calculate core pool fees
+            core_pool_fees = self.calculate_core_pool_fees(recon_data)
+            
+            if core_pool_fees > 0:
+                # Calculate what percentage of core pool fees went to incentives
+                metrics['vote_incentives_pct_of_core'] = (totals['bribes_usdc'] / core_pool_fees * 100).quantize(Decimal('0.01'))
+                metrics['core_fees'] = core_pool_fees
+                
+                # Calculate non-core fees
+                if recon_data and 'noncoreFees' in recon_data:
+                    metrics['noncore_fees'] = Decimal(str(recon_data['noncoreFees'])) * Decimal('1e6')
+                elif total_fees_collected > 0:
+                    metrics['noncore_fees'] = total_fees_collected - core_pool_fees
+                else:
+                    # Fallback from distributed amounts
+                    metrics['noncore_fees'] = totals['total_usdc'] - core_pool_fees
+                
+                metrics['core_pool_pct'] = (core_pool_fees / (core_pool_fees + metrics['noncore_fees']) * 100).quantize(Decimal('0.01'))
+            else:
+                metrics['vote_incentives_pct_of_core'] = Decimal('0')
+                metrics['core_fees'] = Decimal('0')
+                metrics['noncore_fees'] = total_fees_collected if total_fees_collected > 0 else totals['total_usdc']
+                metrics['core_pool_pct'] = Decimal('0')
+            
+            if totals['bribes_usdc'] > 0:
+                metrics['aura_bribe_pct'] = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
+                metrics['bal_bribe_pct'] = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
+        
+        if total_fees_collected > 0:
+            metrics['allocation_efficiency'] = (totals['total_usdc'] / total_fees_collected * 100).quantize(Decimal('0.01'))
+            metrics['discrepancy_usd'] = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
+        
+        return metrics
+
+    def generate_markdown_summary(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0), recon_data: Dict = None) -> str:
         """Generate markdown version of the summary"""
         total_txs = len(payload["transactions"])
         totals = self.calculate_totals(groups)
+        metrics = self.calculate_allocation_metrics(totals, total_fees_collected, recon_data)
         
         md = ["## 📊 Payload Summary\n"]
         md.append(f"**Total Transactions:** {total_txs}\n")
         
         md.append("### USDC Allocations")
-        md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
-        md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
-        md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
-        md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
+        if 'bribes_pct' in metrics:
+            if 'core_fees' in metrics and metrics['core_fees'] > 0:
+                # Show as percentage of core pool fees
+                md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))} ({metrics['vote_incentives_pct_of_core']}% of core pool fees)")
+            else:
+                md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))} ({metrics['bribes_pct']}% of distributed)")
+            
+            if 'aura_bribe_pct' in metrics:
+                md.append(f"  - Aura: {self.format_amount(str(totals['aura_bribes_usdc']))} ({metrics['aura_bribe_pct']}% of bribes)")
+                md.append(f"  - Balancer: {self.format_amount(str(totals['bal_bribes_usdc']))} ({metrics['bal_bribe_pct']}% of bribes)")
+            
+            md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))} ({metrics['dao_pct']}% of distributed)")
+            md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))} ({metrics['vebal_pct']}% of distributed)")
+            md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))} ({metrics['partner_pct']}% of distributed)")
+        else:
+            md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
+            md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
+            md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
+            md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
         md.append("")
+        
+        if 'core_fees' in metrics and metrics.get('core_fees', 0) > 0:
+            md.append("### 🔍 Allocation Validation")
+            md.append("")
+            md.append("**Fee Pool Breakdown:**")
+            md.append(f"- Core pool fees: {self.format_amount(str(metrics['core_fees']))} ({metrics['core_pool_pct']}%)")
+            md.append(f"- Non-core pool fees: {self.format_amount(str(metrics['noncore_fees']))} ({Decimal('100') - metrics['core_pool_pct']}%)")
+            md.append("")
         
         md.append("### veBAL Transfers")
         md.append(f"- **USDC:** {self.format_amount(str(totals['vebal_usdc']))}")
@@ -180,14 +314,11 @@ class PayloadVisualizer:
         
         md.append(f"### 💰 **TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))}**")
         
-        if total_fees_collected > 0:
-            percentage = (totals['total_usdc'] / total_fees_collected) * 100
-            md.append(f"\n**Allocation Efficiency:** {percentage:.2f}% of collected fees")
+        if 'allocation_efficiency' in metrics:
+            md.append(f"\n**Allocation Efficiency:** {metrics['allocation_efficiency']}% of collected fees")
             
-            # Show discrepancy if any
-            discrepancy_usd = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
-            if abs(discrepancy_usd) > Decimal("0.01"):
-                md.append(f"**⚠️ Discrepancy:** ${discrepancy_usd:,.2f}")
+            if abs(metrics['discrepancy_usd']) > Decimal("0.01"):
+                md.append(f"**⚠️ Discrepancy:** ${metrics['discrepancy_usd']:,.2f}")
         
         return "\n".join(md)
     
@@ -237,9 +368,11 @@ class PayloadVisualizer:
             md.append(f"- **Total:** ${total_fees_collected/Decimal(1e6):,.2f}")
         
         md.append("")
+
+        recon_data = self.load_recon_data(payload_path)
         
         # Add summary
-        md.append(self.generate_markdown_summary(payload, groups, total_fees_collected))
+        md.append(self.generate_markdown_summary(payload, groups, total_fees_collected, recon_data))
         
         # Add transaction tables in priority order
         priority_order = [
@@ -261,38 +394,67 @@ class PayloadVisualizer:
         
         return "\n".join(md)
     
-    def create_summary_panel(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0)) -> Panel:
+    def create_summary_panel(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0), recon_data: Dict = None) -> Panel:
         """Create summary statistics panel"""
         total_txs = len(payload["transactions"])
         totals = self.calculate_totals(groups)
+        metrics = self.calculate_allocation_metrics(totals, total_fees_collected, recon_data)
         
-        summary_text = f"""[bold cyan]Transaction Summary[/bold cyan]
+        lines = [
+            "[bold cyan]Transaction Summary[/bold cyan]",
+            "",
+            f"Total Transactions: [bold]{total_txs}[/bold]",
+            "",
+            "[bold yellow]USDC Allocations:[/bold yellow]"
+        ]
         
-Total Transactions: [bold]{total_txs}[/bold]
-
-[bold yellow]USDC Allocations:[/bold yellow]
-• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]
-• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]
-• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]
-• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]
-
-[bold yellow]veBAL Transfers:[/bold yellow]
-• USDC: [green]{self.format_amount(str(totals['vebal_usdc']))}[/green]
-• BAL: [cyan]{self.format_amount(str(totals['vebal_bal']), "BAL")}[/cyan]
-
-[bold red on white] TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))} [/bold red on white]
-"""
-        
-        if total_fees_collected > 0:
-            percentage = (totals['total_usdc'] / total_fees_collected) * 100
-            summary_text += f"\n[bold yellow]Allocation Efficiency:[/bold yellow] {percentage:.2f}% of collected fees"
+        if 'bribes_pct' in metrics:
+            # Show vote incentives with percentage of core pool fees if available
+            if 'core_fees' in metrics and metrics['core_fees'] > 0:
+                lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green] [dim]({metrics['vote_incentives_pct_of_core']}% of core pool fees)[/dim]")
+            else:
+                lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green] [dim]({metrics['bribes_pct']}% of total)[/dim]")
             
-            # Show discrepancy if any (convert to USD for display)
-            discrepancy_usd = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
-            if abs(discrepancy_usd) > Decimal("0.01"):
-                summary_text += f"\n[bold red]Discrepancy:[/bold red] ${discrepancy_usd:,.2f}"
+            if 'aura_bribe_pct' in metrics:
+                lines.append(f"  [dim]→ Aura: {self.format_amount(str(totals['aura_bribes_usdc']))} ({metrics['aura_bribe_pct']}%)[/dim]")
+                lines.append(f"  [dim]→ Balancer: {self.format_amount(str(totals['bal_bribes_usdc']))} ({metrics['bal_bribe_pct']}%)[/dim]")
+            
+            lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue] [dim]({metrics['dao_pct']}% of total)[/dim]")
+            lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta] [dim]({metrics['vebal_pct']}% of total)[/dim]")
+            lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow] [dim]({metrics['partner_pct']}% of total)[/dim]")
+        else:
+            lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]")
+            lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]")
+            lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]")
+            lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]")
         
-        return Panel(summary_text, title="📊 Payload Summary", border_style="bright_blue")
+        # Add Allocation Validation section (matching markdown version)
+        if 'core_fees' in metrics and metrics.get('core_fees', 0) > 0:
+            lines.extend([
+                "",
+                "[bold yellow]🔍 Allocation Validation[/bold yellow]",
+                "",
+                "[dim]Fee Pool Breakdown:[/dim]",
+                f"• Core pool fees: [cyan]{self.format_amount(str(metrics['core_fees']))}[/cyan] [dim]({metrics['core_pool_pct']}%)[/dim]",
+                f"• Non-core pool fees: [magenta]{self.format_amount(str(metrics['noncore_fees']))}[/magenta] [dim]({Decimal('100') - metrics['core_pool_pct']}%)[/dim]"
+            ])
+        
+        lines.extend([
+            "",
+            "[bold yellow]veBAL Transfers:[/bold yellow]",
+            f"• USDC: [green]{self.format_amount(str(totals['vebal_usdc']))}[/green]",
+            f"• BAL: [cyan]{self.format_amount(str(totals['vebal_bal']), 'BAL')}[/cyan]",
+            "",
+            f"[bold red on white] TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))} [/bold red on white]"
+        ])
+        
+        if 'allocation_efficiency' in metrics:
+            lines.append(f"\n[bold yellow]Allocation Efficiency:[/bold yellow] {metrics['allocation_efficiency']}% of collected fees")
+            
+            if abs(metrics['discrepancy_usd']) > Decimal("0.01"):
+                lines.append(f"[bold red]Discrepancy:[/bold red] ${metrics['discrepancy_usd']:,.2f}")
+        
+        return Panel("\n".join(lines), title="📊 Payload Summary", border_style="bright_blue")
     
     def create_transaction_table(self, group_name: str, transactions: List[Dict]) -> Table:
         """Create a table for a group of transactions"""
@@ -374,8 +536,11 @@ Total Transactions: [bold]{total_txs}[/bold]
         self.console.print(header)
         self.console.print()
         
+        # Load recon data
+        recon_data = self.load_recon_data(payload_path)
+        
         # Create and print summary
-        summary = self.create_summary_panel(payload, groups, total_fees_collected)
+        summary = self.create_summary_panel(payload, groups, total_fees_collected, recon_data)
         self.console.print(summary)
         self.console.print()
         
