@@ -1,4 +1,4 @@
-FEE_CONSTANTS_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/protocol_fees_constants.json"
+FEE_CONSTANTS_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/refs/heads/integrate-beets-fee/config/protocol_fees_constants.json"
 ALLIANCE_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/alliance_fee_share.json"
 POOL_OVERRIDES_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/pool_incentives_overrides.json"
 SNAPSHOT_URL = "https://hub.snapshot.org/graphql?"
