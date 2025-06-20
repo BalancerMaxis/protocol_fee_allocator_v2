@@ -62,7 +62,6 @@ class CorePoolRunConfig:
         self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
-        self.beets_share_pct = Decimal(0.5)  # beets share is hardcoded to 50% for now, needs to be added to config
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
 
         # caches a list of `PoolFeeData` for each chain
@@ -519,4 +518,4 @@ class CorePoolChain(AbstractCorePoolChain):
         beets_share_pct = self.chains.beets_share_pct if self.name == "optimism" else 0
         if beets_share_pct == 0:
             return Decimal(0)
-        return self.alliance_noncore_fees_collected * beets_share_pct * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct)
+        return self.alliance_noncore_fees_collected * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct) * beets_share_pct

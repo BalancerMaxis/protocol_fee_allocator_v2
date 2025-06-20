@@ -552,7 +552,7 @@ class FeeAllocator:
             "feesToDaoPct": float(round(total_dao / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
-            "feesToBeetsPct": float(round(total_beets / total_distributed, 4)),
+            "feesToBeetsPct": float(round(total_beets / total_distributed, 4)) if total_distributed > 0 else 0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1]
