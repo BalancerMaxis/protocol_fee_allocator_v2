@@ -156,7 +156,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _to_dao_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
+        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
         dao_share_pct = (
             self.alliance_fee_config.dao_share_pct 
             if (self.is_alliance_non_core_pool or self.is_alliance_pool)
@@ -166,7 +166,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _to_vebal_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
+        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
         vebal_share_pct = (
             self.alliance_fee_config.vebal_share_pct 
             if (self.is_alliance_non_core_pool or self.is_alliance_pool)
@@ -185,7 +185,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return Decimal(0)
         
     def _to_beets_usd(self) -> Decimal:
-        beets_share_pct = self.chain.chains.beets_share_pct if self.chain.name == "optimism" else 0
+        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
         if beets_share_pct == 0:
             return Decimal(0)
         return (self.to_dao_usd + self.to_vebal_usd)

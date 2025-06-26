@@ -345,7 +345,7 @@ class FeeAllocator:
         output = []
         
         for chain in self.run_config.all_chains:
-            beets_share_pct = self.run_config.beets_share_pct if chain.name == "optimism" else Decimal(0)
+            beets_share_pct = self.run_config.fee_config.beets_share_pct if chain.name == "optimism" else Decimal(0)
             output.append({
                 "chain": chain.name,
                 "total_fees_collected": round(chain.fees_collected, 4),
