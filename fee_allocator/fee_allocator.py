@@ -430,7 +430,7 @@ class FeeAllocator:
         payment_df = df[df["platform"] == "payment"].iloc[0]
 
         total_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
-        dao_fee_usdc = round(payment_df["amount"] * 1e6)
+        dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
         """bribe txs"""
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
