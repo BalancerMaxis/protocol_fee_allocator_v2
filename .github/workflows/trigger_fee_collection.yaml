@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       manual_date:
-        description: "End date to process (YYYYMMDD format)"
+        description: "End date to process (YYYY-MM-DD format)"
         required: true
         type: string
   push:
@@ -100,7 +100,7 @@ jobs:
           branch-suffix: timestamp
           delete-branch: true
           labels: "Biweekly-Report"
-      
+
     outputs:
       pr_number: ${{ steps.cpr.outputs.pull-request-number }}
 
