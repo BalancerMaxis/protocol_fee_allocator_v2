@@ -103,6 +103,7 @@ class CorePoolRunConfig:
                 # retry with delay
                 time.sleep(10)
                 chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
+                print(f"Successfully initialized chain {chain_name} with fees {fees}.")
             chain.set_pool_fee_data()
             
             if chain.pool_fee_data:
