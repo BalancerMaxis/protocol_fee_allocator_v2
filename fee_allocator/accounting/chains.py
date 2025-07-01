@@ -3,6 +3,7 @@ from typing import List, Dict, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import os
+import time
 from dotenv import load_dotenv
 
 from web3 import Web3
@@ -92,7 +93,13 @@ class CorePoolRunConfig:
                 print(f"{chain_name} has no fees on {self.protocol_version}, skipping...")
                 continue
                 
-            chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
+            try:
+                chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
+            except ConnectionError as e:
+                logger.error(f"Failed to initialize chain {chain_name} with fees {fees}. trying again after 10s...")
+                # retry with delay
+                time.sleep(10)
+                chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             chain.set_pool_fee_data()
             
             if chain.pool_fee_data:
