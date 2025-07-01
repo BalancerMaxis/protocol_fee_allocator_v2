@@ -99,7 +99,7 @@ class CorePoolRunConfig:
             try:
                 chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
             except ConnectionError as e:
-                logger.error(f"Failed to initialize chain {chain_name} with fees {fees}. trying again after 10s...")
+                print(f"Failed to initialize chain {chain_name} with fees {fees}. trying again after 10s...")
                 # retry with delay
                 time.sleep(10)
                 chain = CorePoolChain(self, chain_name, fees, self.w3_by_chain[chain_name])
