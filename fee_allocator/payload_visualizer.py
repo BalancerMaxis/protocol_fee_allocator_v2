@@ -213,7 +213,7 @@ class PayloadVisualizer:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
             return ["Gauge/Proposal", "Amount", "Token"]
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
             return ["Token", "Spender", "Amount"]
