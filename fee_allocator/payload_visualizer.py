@@ -187,7 +187,7 @@ class PayloadVisualizer:
             data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
             data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
             token_addr = tx.get("to", "")
