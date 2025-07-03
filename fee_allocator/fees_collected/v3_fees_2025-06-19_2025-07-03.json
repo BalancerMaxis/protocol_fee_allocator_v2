@@ -1,4 +1,7 @@
 {
   "avalanche": 4282592480,
-  "mainnet": 0
+  "base": 11287763029,
+  "arbitrum": 4275046499,
+  "gnosis": 2779733691,
+  "mainnet": 18585352309
 }
