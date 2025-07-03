@@ -45,13 +45,26 @@ jobs:
       - name: Find report
         id: find-report
         run: |
-          # Find the most recent markdown report
-          REPORT_PATH=$(ls -t fee_allocator/reports/*.md 2>/dev/null | head -n 1)
+          # First try to find the most recent payload JSON file
+          PAYLOAD_FILE=$(ls -t fee_allocator/payloads/*.json 2>/dev/null | grep -E '^fee_allocator/payloads/[0-9]{4}-[0-9]{2}-[0-9]{2}\.json$' | head -n 1)
           
-          if [ -n "$REPORT_PATH" ]; then
-            echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
+          if [ -n "$PAYLOAD_FILE" ]; then
+            # Extract date from payload filename (e.g., 2025-07-03.json -> 2025-07-03)
+            PAYLOAD_DATE=$(basename "$PAYLOAD_FILE" .json)
+            # Look for matching report
+            REPORT_PATH="fee_allocator/reports/${PAYLOAD_DATE}.md"
+            
+            if [ -f "$REPORT_PATH" ]; then
+              echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
+            else
+              # Fallback to most recent report
+              REPORT_PATH=$(ls -t fee_allocator/reports/*.md 2>/dev/null | head -n 1)
+              echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "report_path=" >> $GITHUB_OUTPUT
+            # Fallback to most recent report
+            REPORT_PATH=$(ls -t fee_allocator/reports/*.md 2>/dev/null | head -n 1)
+            echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
           fi
 
       - name: Comment PR
