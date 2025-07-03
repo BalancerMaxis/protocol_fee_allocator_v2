@@ -6,20 +6,23 @@ on:
       pr_number:
         required: true
         type: string
+      end_date:
+        required: true
+        type: string
   pull_request_target:
     types: [opened, synchronize]
     paths:
-      - 'fee_allocator/payloads/*.json'
+      - "fee_allocator/payloads/*.json"
 
 jobs:
   comment-report:
     runs-on: ubuntu-latest
-    
+
     permissions:
       contents: read
       pull-requests: write
       issues: write
-    
+
     steps:
       - name: Get PR details
         if: ${{ inputs.pr_number }}
@@ -35,24 +38,12 @@ jobs:
             });
             core.setOutput('head_ref', pr.data.head.ref);
             core.setOutput('head_sha', pr.data.head.sha);
-      
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr-details.outputs.head_sha || github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr-details.outputs.head_sha || (github.event.pull_request && github.event.pull_request.head.sha) }}
           fetch-depth: 0
-
-      - name: Find report
-        id: find-report
-        run: |
-          # Find the most recent markdown report
-          REPORT_PATH=$(ls -t fee_allocator/reports/*.md 2>/dev/null | head -n 1)
-          
-          if [ -n "$REPORT_PATH" ]; then
-            echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
-          else
-            echo "report_path=" >> $GITHUB_OUTPUT
-          fi
 
       - name: Comment PR
         uses: actions/github-script@v7
@@ -60,42 +51,42 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const fs = require('fs');
-            const reportPath = '${{ steps.find-report.outputs.report_path }}';
-            
+            const reportPath = '${{ inputs.end_date }}';
+
             if (!reportPath) {
               console.log('No report found or generated');
               return;
             }
-            
+
             let reportContent = fs.readFileSync(reportPath, 'utf8');
-            
+
             // Truncate if too large
             if (reportContent.length > 60000) {
               reportContent = reportContent.substring(0, 60000) + '\n\n*Report truncated due to size limits*';
             }
-            
+
             // Determine PR number from either workflow_call or pull_request_target
             const pr_number = '${{ inputs.pr_number }}' || (context.issue ? context.issue.number : null);
-            
+
             if (!pr_number) {
               console.log('No PR number found');
               return;
             }
-            
+
             // Find existing comment
             const comments = await github.rest.issues.listComments({
               issue_number: pr_number,
               owner: context.repo.owner,
               repo: context.repo.repo
             });
-            
-            const botComment = comments.data.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('## Fee Allocator Payload Report')
             );
-            
+
             const body = `## Fee Allocator Payload Report\n\n${reportContent}\n\n---\n<sub>This comment is automatically generated and will be updated when the payload changes.</sub>`;
-            
+
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({
@@ -113,4 +104,3 @@ jobs:
                 body: body
               });
             }
-
