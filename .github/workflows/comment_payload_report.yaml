@@ -51,7 +51,7 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const fs = require('fs');
-            const reportPath = '${{ inputs.end_date }}';
+            const reportPath = 'fee_allocator/reports/${{ inputs.end_date }}.md';
 
             if (!reportPath) {
               console.log('No report found or generated');
