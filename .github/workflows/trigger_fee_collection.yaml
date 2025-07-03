@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       manual_date:
-        description: "End date to process (YYYYMMDD format)"
+        description: "End date to process (YYYY-MM-DD format)"
         required: true
         type: string
   push:
@@ -100,9 +100,10 @@ jobs:
           branch-suffix: timestamp
           delete-branch: true
           labels: "Biweekly-Report"
-      
+
     outputs:
       pr_number: ${{ steps.cpr.outputs.pull-request-number }}
+      end_date: ${{ steps.get-date.outputs.end-date }}
 
   comment_report:
     needs: process_fees
@@ -110,4 +111,5 @@ jobs:
     uses: ./.github/workflows/comment_payload_report.yaml
     with:
       pr_number: ${{ needs.process_fees.outputs.pr_number }}
+      end_date: ${{ needs.process_fees.outputs.end_date }}
     secrets: inherit
