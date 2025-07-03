@@ -42,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr-details.outputs.head_sha || (github.event.pull_request && github.event.pull_request.head.sha) }}
+          ref: ${{ steps.pr-details.outputs.head_sha || github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Comment PR
