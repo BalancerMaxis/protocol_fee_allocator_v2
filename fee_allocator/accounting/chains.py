@@ -3,7 +3,6 @@ from typing import List, Dict, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import os
-import time
 from dotenv import load_dotenv
 
 from web3 import Web3
