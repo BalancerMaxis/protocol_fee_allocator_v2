@@ -129,6 +129,8 @@ class PayloadVisualizer:
                     groups["veBAL Transfers"].append(tx)
                 elif recipient == self.book.get("multisigs/dao", "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f").lower():
                     groups["DAO Transfers"].append(tx)
+                elif recipient == self.book.get("multisigs/beets_treasury").lower():
+                    groups["Beets Transfers"].append(tx)
                 else:
                     # Check if it's a partner transfer
                     groups["Partner Transfers"].append(tx)
@@ -147,6 +149,7 @@ class PayloadVisualizer:
             "vebal_usdc": Decimal(0),
             "vebal_bal": Decimal(0),
             "partner_usdc": Decimal(0),
+            "beets_usdc": Decimal(0),
         }
         
         for group_name, txs in groups.items():
@@ -166,11 +169,13 @@ class PayloadVisualizer:
                         totals["vebal_bal"] += Decimal(tx["contractInputsValues"]["_value"])
                 elif group_name == "DAO Transfers":
                     totals["dao_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
+                elif group_name == "Beets Transfers":
+                    totals["beets_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
                 elif group_name == "Partner Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["partner_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
-        
-        totals["total_usdc"] = totals["bribes_usdc"] + totals["dao_usdc"] + totals["vebal_usdc"] + totals["partner_usdc"]
+
+        totals["total_usdc"] = totals["bribes_usdc"] + totals["dao_usdc"] + totals["vebal_usdc"] + totals["partner_usdc"] + totals["beets_usdc"]
         return totals
     
     def extract_transaction_data(self, group_name: str, tx: Dict) -> Dict[str, str]:
@@ -182,7 +187,7 @@ class PayloadVisualizer:
             data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
             data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
             token_addr = tx.get("to", "")
@@ -208,7 +213,7 @@ class PayloadVisualizer:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
             return ["Gauge/Proposal", "Amount", "Token"]
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
             return ["Token", "Spender", "Amount"]
@@ -233,6 +238,7 @@ class PayloadVisualizer:
             metrics['dao_pct'] = (totals['dao_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             metrics['vebal_pct'] = (totals['vebal_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             metrics['partner_pct'] = (totals['partner_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            metrics['beets_pct'] = (totals['beets_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             
             # Calculate core pool fees
             core_pool_fees = self.calculate_core_pool_fees(recon_data)
@@ -292,11 +298,13 @@ class PayloadVisualizer:
             md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))} ({metrics['dao_pct']}% of distributed)")
             md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))} ({metrics['vebal_pct']}% of distributed)")
             md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))} ({metrics['partner_pct']}% of distributed)")
+            md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))} ({metrics['beets_pct']}% of distributed)")
         else:
             md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
             md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
             md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
             md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
+            md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))}")
         md.append("")
         
         if 'core_fees' in metrics and metrics.get('core_fees', 0) > 0:
@@ -380,6 +388,7 @@ class PayloadVisualizer:
             "Balancer Bribes", 
             "veBAL Transfers",
             "DAO Transfers",
+            "Beets Transfers",
             "Partner Transfers",
             "Token Approvals",
             "Other Bribes",
@@ -421,11 +430,13 @@ class PayloadVisualizer:
             
             lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue] [dim]({metrics['dao_pct']}% of total)[/dim]")
             lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta] [dim]({metrics['vebal_pct']}% of total)[/dim]")
+            lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan] [dim]({metrics['beets_pct']}% of total)[/dim]")
             lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow] [dim]({metrics['partner_pct']}% of total)[/dim]")
         else:
             lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]")
             lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]")
             lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]")
+            lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan]")
             lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]")
         
         # Add Allocation Validation section (matching markdown version)
@@ -464,6 +475,7 @@ class PayloadVisualizer:
             "Balancer Bribes": "blue",
             "veBAL Transfers": "magenta",
             "DAO Transfers": "green",
+            "Beets Transfers": "cyan",
             "Partner Transfers": "yellow",
             "Token Approvals": "dim",
         }
@@ -549,6 +561,7 @@ class PayloadVisualizer:
             "Balancer Bribes", 
             "veBAL Transfers",
             "DAO Transfers",
+            "Beets Transfers",
             "Partner Transfers",
             "Token Approvals",
             "Other Bribes",

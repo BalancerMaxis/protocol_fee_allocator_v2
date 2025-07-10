@@ -263,11 +263,19 @@ class FeeAllocator:
                 )
 
         noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd for chain in self.run_config.all_chains)
+        noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd for chain in self.run_config.all_chains)
         output.append(
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
                 "platform": "payment",
                 "amount": self.run_config.total_to_dao_usd + noncore_total_to_dao_usd,
+            }
+        )
+        output.append(
+            {
+                "target": self.book["multisigs/beets_treasury"],
+                "platform": "beets",
+                "amount": self.run_config.total_to_beets_usd + noncore_total_to_beets_usd,
             }
         )
 
@@ -300,6 +308,7 @@ class FeeAllocator:
                         "earned_fees": round(core_pool.total_earned_fees_usd_twap, 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
+                        "fees_to_beets": round(core_pool.to_beets_usd, 4),
                         "total_incentives": round(core_pool.total_to_incentives_usd, 4),
                         "aura_incentives": round(core_pool.to_aura_incentives_usd, 4),
                         "bal_incentives": round(core_pool.to_bal_incentives_usd, 4),
@@ -336,6 +345,7 @@ class FeeAllocator:
         output = []
         
         for chain in self.run_config.all_chains:
+            beets_share_pct = self.run_config.fee_config.beets_share_pct if chain.name == "optimism" else Decimal(0)
             output.append({
                 "chain": chain.name,
                 "total_fees_collected": round(chain.fees_collected, 4),
@@ -343,10 +353,12 @@ class FeeAllocator:
                 "noncore_fees": round(chain.noncore_fees_collected, 4),
                 "noncore_to_dao": round(chain.noncore_to_dao_usd, 4),
                 "noncore_to_vebal": round(chain.noncore_to_vebal_usd, 4),
+                "noncore_to_beets": round(chain.noncore_to_beets_usd, 4),
                 "dao_share_pct": round(self.run_config.fee_config.noncore_dao_share_pct * 100, 2),
-                "vebal_share_pct": round(self.run_config.fee_config.noncore_vebal_share_pct * 100, 2)
+                "vebal_share_pct": round(self.run_config.fee_config.noncore_vebal_share_pct * 100, 2),
+                "beets_share_pct": round(beets_share_pct * 100, 2)
             })
-            
+
         df = pd.DataFrame(output)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
         end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
@@ -428,9 +440,11 @@ class FeeAllocator:
         df = pd.read_csv(input_csv)
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
+        beets_df = df[df["platform"] == "beets"].iloc[0]
 
         total_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
+        beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
         """bribe txs"""
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
@@ -448,6 +462,7 @@ class FeeAllocator:
 
         """transfer txs"""
         usdc.transfer(payment_df["target"], dao_fee_usdc)
+        usdc.transfer(beets_df["target"], beets_fee_usdc)
 
         partner_fee_usdc_spent = 0
         if partner_csv:
@@ -512,6 +527,7 @@ class FeeAllocator:
         total_vebal = Decimal(0)
         total_partner = Decimal(0)
         total_distributed = Decimal(0)
+        total_beets = Decimal(0)
 
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
@@ -520,21 +536,24 @@ class FeeAllocator:
                 assert pool.to_dao_usd >= 0, f"Negative dao share: {pool.to_dao_usd}"
                 assert pool.to_vebal_usd >= 0, f"Negative vebal share: {pool.to_vebal_usd}"
                 assert pool.to_partner_usd >= 0, f"Negative partner share: {pool.to_partner_usd}"
+                assert pool.to_beets_usd >= 0, f"Negative beets share: {pool.to_beets_usd}"
 
                 total_aura += pool.to_aura_incentives_usd
                 total_bal += pool.to_bal_incentives_usd
                 total_dao += pool.to_dao_usd
                 total_vebal += pool.to_vebal_usd
                 total_partner += pool.to_partner_usd
+                total_beets += pool.to_beets_usd
 
             total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
             total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
+            total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd
 
             for noncore_pool in chain.alliance_noncore_fee_data:
                 total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
 
         # Total distributed includes all allocations including partner fees
-        total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner
+        total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner + total_beets
 
         # For percentage calculations, we need to check that everything sums to 100%
         if total_distributed > 0:
@@ -559,12 +578,14 @@ class FeeAllocator:
             "feesToDao": float(round(total_dao, 2)),
             "feesToVebal": float(round(total_vebal, 2)),
             "feesToPartners": float(round(total_partner, 2)),
+            "feesToBeets": float(round(total_beets, 2)),
             "auravebalShare": float(round(aura_share, 2)),
             "auraIncentivesPct": float(round(total_aura / total_distributed, 4)) if total_distributed > 0 else 0,
             "balIncentivesPct": float(round(total_bal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToDaoPct": float(round(total_dao / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
+            "feesToBeetsPct": float(round(total_beets / total_distributed, 4)) if total_distributed > 0 else 0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1]
