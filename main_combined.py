@@ -58,15 +58,8 @@ def main() -> None:
     v2_allocator.allocate()
     v2_allocator.recon()
     
-    v2_allocator.generate_incentives_csv()
-    v2_bribe_file = v2_allocator.generate_bribe_csv()
-    v2_partner_file = v2_allocator.generate_partner_csv()
-    v2_payload_path = v2_allocator.generate_bribe_payload(
-        v2_bribe_file, 
-        partner_csv=v2_partner_file,
-        include_bal_transfer=False  # Skip BAL transfer for v2 in combined mode
-    )
-    v2_allocator.generate_noncore_csv()
+    v2_artifacts = v2_allocator.generate_artifacts(include_bal_transfer=False)
+    v2_payload_path = v2_artifacts["payload"]
     
     print("\n=== Running V3 Allocation ===\n")
     v3_input_fees = fetch_collected_fees(start_date, end_date, args.v3_fees_file_name, "v3")
@@ -75,15 +68,8 @@ def main() -> None:
     v3_allocator.allocate()
     v3_allocator.recon()
 
-    v3_allocator.generate_incentives_csv()
-    v3_bribe_file = v3_allocator.generate_bribe_csv()
-    v3_partner_file = v3_allocator.generate_partner_csv()
-    v3_payload_path = v3_allocator.generate_bribe_payload(
-        v3_bribe_file, 
-        partner_csv=v3_partner_file,
-        include_bal_transfer=True  # Include BAL transfer for v3 in combined mode
-    )
-    v3_allocator.generate_noncore_csv()
+    v3_artifacts = v3_allocator.generate_artifacts(include_bal_transfer=True)
+    v3_payload_path = v3_artifacts["payload"]
     
     print("\n=== Combining V2 and V3 Payloads ===\n")
     date_str = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")

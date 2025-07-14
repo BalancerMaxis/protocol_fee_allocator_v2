@@ -542,7 +542,7 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def noncore_fees_collected(self) -> Decimal:
-        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_collected, Decimal(0))
+        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_collected - self.partner_noncore_fees_collected, Decimal(0))
 
     @property
     @require_pool_fee_data
@@ -567,7 +567,7 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def total_fees_earned(self) -> Decimal:
-        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_collected
+        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_collected + self.partner_noncore_fees_collected
     
     @property
     def alliance_noncore_fees_collected(self) -> Decimal:

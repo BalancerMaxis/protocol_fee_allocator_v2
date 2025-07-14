@@ -113,6 +113,35 @@ class FeeAllocator:
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
         self._filter_dusty_bal_incentives()
+    
+    def generate_artifacts(self, include_bal_transfer: bool = True) -> Dict[str, Path]:
+        """
+        Generates all fee allocation artifacts (CSVs and payload).
+        """
+        logger.info("generating fee allocation artifacts")
+        
+        # Generate CSVs
+        incentives_path = self.generate_incentives_csv()
+        bribe_path = self.generate_bribe_csv()
+        alliance_path = self.generate_alliance_csv()
+        partner_path = self.generate_partner_csv()
+        noncore_path = self.generate_noncore_csv()
+        
+        payload_path = self.generate_bribe_payload(
+            bribe_path, 
+            partner_csv=partner_path,
+            alliance_csv=alliance_path,
+            include_bal_transfer=include_bal_transfer
+        )
+        
+        return {
+            "incentives_csv": incentives_path,
+            "bribe_csv": bribe_path,
+            "alliance_csv": alliance_path,
+            "partner_csv": partner_path,
+            "noncore_csv": noncore_path,
+            "payload": payload_path
+        }
 
     def _handle_aura_min(self, buffer=0):
         """
@@ -262,8 +291,8 @@ class FeeAllocator:
                     },
                 )
 
-        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd for chain in self.run_config.all_chains)
-        noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd for chain in self.run_config.all_chains)
+        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd + chain.partner_noncore_to_dao_usd for chain in self.run_config.all_chains)
+        noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd for chain in self.run_config.all_chains)
         output.append(
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
@@ -370,76 +399,87 @@ class FeeAllocator:
         df.to_csv(output_path, index=False)
         return output_path
     
-    def generate_partner_csv(
-        self, output_path: Path = Path("fee_allocator/allocations/partner")
+    def generate_alliance_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/alliance")
     ) -> Path:
-        logger.info("generating partner csv")
+        logger.info("generating alliance fee distribution csv")
         output = []
+        
         for chain in self.run_config.all_chains:
             # Process alliance pools
             for alliance_pool in chain.alliance_pools:
                 member = next((m for m in self.run_config.alliance_config.alliance_members if alliance_pool.partner == m.name), None)
+                if not member:
+                    logger.warning(f"Alliance member '{alliance_pool.partner}' not found in alliance config")
+                    continue
+
                 core_pool = next((p for p in chain.core_pools if p.pool_id == alliance_pool.pool_id), None)
                 noncore_pool = next((p for p in chain.alliance_noncore_fee_data if p.pool_id == alliance_pool.pool_id), None)
 
                 if core_pool:
                     partner_fee = core_pool.to_partner_usd
                     pool_id = core_pool.pool_id
+                    pool_type = "core"
                 elif noncore_pool:
                     partner_fee = chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
                     pool_id = noncore_pool.pool_id
+                    pool_type = "non-core"
                 else:
                     continue
 
                 output.append({
                     "pool_id": pool_id,
                     "chain": chain.name,
-                    "partner": alliance_pool.partner,
+                    "alliance_member": alliance_pool.partner,
                     "amount": partner_fee,
                     "target": member.multisig_address,
-                    "pool_type": "core" if core_pool else "non-core"
+                    "pool_type": pool_type
                 })
-            
-            # Process partner pools
-            if self.run_config.alliance_config.partners:
-                for partner_pool in chain.partner_pools:
-                    # Find the partner and their multisig
-                    partner = None
-                    multisig = None
-                    for p in self.run_config.alliance_config.partners:
-                        if any(pool.pool_id == partner_pool.pool_id for pool in p.pools):
-                            partner = p
-                            # For now, partners don't have a multisig field, so we'll use a placeholder
-                            # This should be updated when partner model includes multisig address
-                            multisig = f"PARTNER_{p.name}_MULTISIG"
-                            break
-                    
-                    if not partner:
-                        continue
-                        
-                    core_pool = next((p for p in chain.core_pools if p.pool_id == partner_pool.pool_id), None)
-                    noncore_pool = next((p for p in chain.partner_noncore_fee_data if p.pool_id == partner_pool.pool_id), None)
-                    
-                    if core_pool:
-                        partner_fee = core_pool.to_partner_usd
-                        pool_id = core_pool.pool_id
-                        pool_type = "core"
-                    elif noncore_pool:
-                        partner_fee = chain.get_partner_noncore_fee(partner_pool.pool_id)
-                        pool_id = noncore_pool.pool_id
-                        pool_type = "non-core"
-                    else:
-                        continue
-                    
-                    if partner_fee > 0:
+
+        df = pd.DataFrame(output)
+        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
+        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_alliance_{start_date}_{end_date}.csv"
+        output_path.parent.mkdir(exist_ok=True)
+        df.to_csv(output_path, index=False)
+        return output_path
+
+    def generate_partner_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/partner")
+    ) -> Path:
+        logger.info("generating partner fee distribution csv")
+        output = []
+        
+        if self.run_config.alliance_config.partners:
+            for chain in self.run_config.all_chains:
+                # Core partner pools
+                for pool in chain.core_pools:
+                    if pool.is_partner_pool:
+                        partner, _ = pool.partner_info
                         output.append({
-                            "pool_id": pool_id,
+                            "pool_id": pool.pool_id,
                             "chain": chain.name,
                             "partner": partner.name,
-                            "amount": partner_fee,
-                            "target": multisig,
-                            "pool_type": pool_type
+                            "amount": pool.to_partner_usd,
+                            "target": partner.multisig_address,
+                            "pool_type": "core"
                         })
+                
+                # Non-core partner pools
+                for pool_data in chain.partner_noncore_fee_data:
+                    partner_fee = chain.get_partner_noncore_fee(pool_data.pool_id)
+                    if partner_fee > 0:
+                        partner_info = self.run_config.alliance_config.get_partner_pool_config(pool_data.pool_id, chain.name, is_core=False)
+                        if partner_info:
+                            partner, _ = partner_info
+                            output.append({
+                                "pool_id": pool_data.pool_id,
+                                "chain": chain.name,
+                                "partner": partner.name,
+                                "amount": partner_fee,
+                                "target": partner.multisig_address,
+                                "pool_type": "non-core"
+                            })
 
         df = pd.DataFrame(output)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
@@ -454,6 +494,7 @@ class FeeAllocator:
         input_csv: str,
         output_path: Path = Path("fee_allocator/payloads"),
         partner_csv: str = None,
+        alliance_csv: str = None,
         include_bal_transfer: bool = True
     ) -> Path:
         """builds a safe payload from the bribe csv
@@ -462,6 +503,7 @@ class FeeAllocator:
             input_csv: Path to the bribe CSV file
             output_path: Directory to save the payload JSON
             partner_csv: Optional path to partner CSV file
+            alliance_csv: Optional path to alliance CSV file
             include_bal_transfer: Whether to include BAL transfer to veBAL (default True)
                                 Set to False for v2 in combined mode to avoid duplication
         """
@@ -505,6 +547,20 @@ class FeeAllocator:
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
 
+        # Process alliance transfers
+        alliance_fee_usdc_spent = 0
+        if alliance_csv:
+            try:
+                alliance_df = pd.read_csv(alliance_csv)
+                for _, row in alliance_df.iterrows():
+                    if row["amount"] > 0:
+                        alliance_amount = round(row["amount"] * 1e6)
+                        alliance_fee_usdc_spent += alliance_amount
+                        usdc.transfer(row["target"], alliance_amount)
+            except pd.errors.EmptyDataError:
+                logger.info(f"no alliance members found for protocol {self.run_config.protocol_version}")
+        
+        # Process partner transfers
         partner_fee_usdc_spent = 0
         if partner_csv:
             try:
@@ -515,7 +571,7 @@ class FeeAllocator:
                         partner_fee_usdc_spent += partner_amount
                         usdc.transfer(row["target"], partner_amount)
             except pd.errors.EmptyDataError:
-                logger.info(f"no alliance members found for protocol {self.run_config.protocol_version}")
+                logger.info(f"no partners found for protocol {self.run_config.protocol_version}")
 
         datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
 
@@ -586,19 +642,15 @@ class FeeAllocator:
                 total_partner += pool.to_partner_usd
                 total_beets += pool.to_beets_usd
 
-            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
-            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
-            total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd
+            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd + chain.partner_noncore_to_dao_usd
+            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd + chain.partner_noncore_to_vebal_usd
+            total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd
 
             for noncore_pool in chain.alliance_noncore_fee_data:
                 total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
             
             for noncore_pool in chain.partner_noncore_fee_data:
                 total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
-                
-            total_dao += chain.partner_noncore_to_dao_usd
-            total_vebal += chain.partner_noncore_to_vebal_usd
-            total_beets += chain.partner_noncore_to_beets_usd
 
         # Total distributed includes all allocations including partner fees
         total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner + total_beets
@@ -613,7 +665,7 @@ class FeeAllocator:
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
         total_core_fees = sum(chain.total_earned_fees_usd_twap for chain in self.run_config.all_chains)
-        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected for chain in self.run_config.all_chains)
+        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected + chain.partner_noncore_fees_collected for chain in self.run_config.all_chains)
         
         summary = {
             "feesCollected": float(round(total_fees, 2)),

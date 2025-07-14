@@ -74,31 +74,35 @@ class AllianceThresholds(BaseModel):
 
 class PartnerPool(BaseModel):
     """
-    Represents a partner pool with custom fee allocation.
+    Represents a pool that is part of a Partner program.
     """
     pool_id: str
     network: str
+    eligibility_date: str
     active: bool
 
 
 class PartnerFeeAllocation(BaseModel):
     """
-    Represents the fee allocation configuration for partner pools.
+    Represents the fee allocation configuration for Partner pools.
     """
     vebal_share_pct: Decimal
-    vote_incentive_pct: Decimal
+    vote_incentive_pct: Decimal | None = None  # Only for core pools
     partner_share_pct: Decimal
     dao_share_pct: Decimal
 
 
 class Partner(BaseModel):
     """
-    Represents a partner with custom fee allocations.
+    Represents a partner in the fee sharing program.
+    Partners are distinct from Alliance members - they receive custom fee splits.
     """
     name: str
+    multisig_address: str
     active: bool
-    fee_allocations: dict[str, PartnerFeeAllocation]  # "core" and "non_core"
     pools: list[PartnerPool]
+    # Optional custom fee allocation - if not specified, uses default from partner_fee_allocations
+    custom_fee_allocation: PartnerFeeAllocation | None = None
 
 
 class AllianceConfig(BaseModel):
@@ -110,6 +114,7 @@ class AllianceConfig(BaseModel):
     alliance_fee_allocations: dict[str, AllianceFeeAllocation]
     alliance_thresholds: AllianceThresholds
     partners: list[Partner] | None = None
+    partner_fee_allocations: dict[str, PartnerFeeAllocation] | None = None
 
     def get_pool_fee_config(self, pool_id: str, network: str, is_core: bool) -> AllianceFeeAllocation | None:
         """
@@ -122,10 +127,10 @@ class AllianceConfig(BaseModel):
                     return self.alliance_fee_allocations["core" if is_core else "non_core"]
         return None
     
-    def get_partner_pool_config(self, pool_id: str, network: str, is_core: bool) -> tuple[str, PartnerFeeAllocation] | None:
+    def get_partner_pool_config(self, pool_id: str, network: str, is_core: bool = True) -> tuple[Partner, PartnerFeeAllocation] | None:
         """
-        Returns the partner name and fee allocation configuration for a specific partner pool.
-        Returns None if the pool is not a partner pool.
+        Returns the partner and fee allocation configuration for a specific pool if it's part of a Partner program.
+        Returns None if the pool is not part of any Partner program.
         """
         if not self.partners:
             return None
@@ -135,7 +140,12 @@ class AllianceConfig(BaseModel):
                 continue
             for pool in partner.pools:
                 if pool.pool_id == pool_id and pool.network == network and pool.active:
-                    fee_type = "core" if is_core else "non_core"
-                    if fee_type in partner.fee_allocations:
-                        return (partner.name, partner.fee_allocations[fee_type])
+                    # Use custom fee allocation if specified, otherwise use default
+                    if partner.custom_fee_allocation:
+                        return partner, partner.custom_fee_allocation
+                    elif self.partner_fee_allocations:
+                        if is_core and "default" in self.partner_fee_allocations:
+                            return partner, self.partner_fee_allocations["default"]
+                        elif not is_core and "default_non_core" in self.partner_fee_allocations:
+                            return partner, self.partner_fee_allocations["default_non_core"]
         return None

@@ -23,6 +23,7 @@ parser.add_argument(
 parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
 parser.add_argument("--protocol_version", help="Protocol version (v2 or v3)", type=str, choices=["v2", "v3"], default="v2")
 parser.add_argument("--no-visualize", help="Skip payload visualization", action="store_true", default=False)
+parser.add_argument("--no-cache", help="Disable caching", action="store_true", default=False)
 
 ROOT = os.path.dirname(__file__)
 
@@ -47,16 +48,14 @@ def main() -> None:
     input_fees = fetch_collected_fees(start_date, end_date, args.fees_file_name, args.protocol_version)
     date_range = (ts_in_the_past, ts_now)
 
-    fee_allocator = FeeAllocator(input_fees, date_range, protocol_version=args.protocol_version)
+    fee_allocator = FeeAllocator(input_fees, date_range, protocol_version=args.protocol_version, use_cache=not args.no_cache)
 
     fee_allocator.allocate()
     fee_allocator.recon()
 
-    fee_allocator.generate_incentives_csv()
-    bribe_file_name = fee_allocator.generate_bribe_csv()
-    partner_file_name = fee_allocator.generate_partner_csv()
-    payload_path = fee_allocator.generate_bribe_payload(bribe_file_name, partner_csv=partner_file_name)
-    fee_allocator.generate_noncore_csv()
+    # Generate all artifacts
+    artifacts = fee_allocator.generate_artifacts()
+    payload_path = artifacts["payload"]
 
     fee_file_name = args.fees_file_name or f"{args.protocol_version}_fees_{start_date}_{end_date}.json"
     fee_file_path = Path(f"fee_allocator/fees_collected/{fee_file_name}")
