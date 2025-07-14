@@ -62,7 +62,7 @@ class FeeAllocator:
         )
         self.book = AddrBook("mainnet").flatbook
 
-    def allocate(self):
+    def allocate(self, redistribute=True):
         """
         Allocates protocol fees to core pools and non-core pools according to BIP-734.
         Core pools: 70% voting incentives, 12.5% veBAL, 17.5% DAO
@@ -71,7 +71,8 @@ class FeeAllocator:
         self.run_config.set_core_pool_chains_data()
         self.run_config.set_aura_vebal_share()
         self.run_config.set_initial_pool_allocation()
-        self.redistribute_fees()
+        if redistribute:
+            self.redistribute_fees()
 
     def redistribute_fees(self):
         """

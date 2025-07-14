@@ -217,21 +217,4 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
         if beets_share_pct == 0:
             return Decimal(0)
-        
-        core_fees = self._core_pool_allocation()
-        
-        # Calculate the base fee share that would go to DAO + veBAL (excluding partner share)
-        if self.is_partner_pool and self.partner_info:
-            _, fee_config = self.partner_info
-            dao_share_pct = fee_config.dao_share_pct
-            vebal_share_pct = fee_config.vebal_share_pct
-        elif self.is_alliance_non_core_pool or self.is_alliance_pool:
-            dao_share_pct = self.alliance_fee_config.dao_share_pct
-            vebal_share_pct = self.alliance_fee_config.vebal_share_pct
-        else:
-            dao_share_pct = self.chain.chains.fee_config.dao_share_pct
-            vebal_share_pct = self.chain.chains.fee_config.vebal_share_pct
-        
-        # Beets gets a percentage of what would have gone to DAO + veBAL
-        base_dao_vebal = self.earned_fee_share_of_chain_usd * core_fees * (dao_share_pct + vebal_share_pct)
-        return base_dao_vebal * beets_share_pct / (1 - beets_share_pct)
+        return (self.to_dao_usd + self.to_vebal_usd)
