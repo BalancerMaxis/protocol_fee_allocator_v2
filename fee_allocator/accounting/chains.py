@@ -29,7 +29,6 @@ from fee_allocator.constants import (
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
-from fee_allocator.utils import get_block_by_ts
 
 
 load_dotenv()
@@ -205,8 +204,8 @@ class CorePoolChain(AbstractCorePoolChain):
         self.partner_noncore_fee_data: List[PoolFeeData] = []
 
     def _set_block_range(self) -> tuple[int, int]:
-        start = get_block_by_ts(self.chains.date_range[0], self)
-        end = get_block_by_ts(self.chains.date_range[1], self)
+        start = self.subgraph.get_first_block_after_utc_timestamp(self.chains.date_range[0])
+        end = self.subgraph.get_first_block_after_utc_timestamp(self.chains.date_range[1])
         logger.info(f"set blocks for {self.name}: {start} - {end}")
         return (start, end)
     
