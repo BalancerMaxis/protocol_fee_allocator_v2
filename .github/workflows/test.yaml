@@ -28,6 +28,7 @@ jobs:
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
           EXPLORER_API_KEY_MAINNET: ${{ secrets.EXPLORER_API_KEY_MAINNET }}
           EXPLORER_API_KEY_ARBITRUM: ${{ secrets.EXPLORER_API_KEY_ARBITRUM }}
           EXPLORER_API_KEY_POLYGON: ${{ secrets.EXPLORER_API_KEY_POLYGON }}
