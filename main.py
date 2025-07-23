@@ -22,8 +22,8 @@ parser.add_argument(
 )
 parser.add_argument("--fees_file_name", help="Fees file name", type=str, required=False)
 parser.add_argument("--protocol_version", help="Protocol version (v2 or v3)", type=str, choices=["v2", "v3"], default="v2")
-parser.add_argument("--no-visualize", help="Skip payload visualization", action="store_true", default=False)
-parser.add_argument("--no-cache", help="Disable caching", action="store_true", default=False)
+parser.add_argument("--no_visualize", help="Skip payload visualization", action="store_true", default=False)
+parser.add_argument("--no_cache", help="Disable caching", action="store_true", default=False)
 
 ROOT = os.path.dirname(__file__)
 
