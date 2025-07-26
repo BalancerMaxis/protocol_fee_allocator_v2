@@ -26,9 +26,14 @@ def get_report(start_date, end_date, env_id):
     
     usdc = data["withdraws"]["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
     total_net = int(usdc["net"])
+    total_gross_usdc = int(usdc["total"])
     
     depositors = {k.replace("-v3", ""): int(v) for k, v in data["depositors"].items()}
     total_gross = sum(depositors.values())
+    
+    # Verify depositors sum matches USDC total
+    if total_gross != total_gross_usdc:
+        raise ValueError(f"Depositors sum {total_gross} doesn't match USDC total {total_gross_usdc}")
     
     # calc each chain's share of net amount based on its proportion of gross fees
     report = {
