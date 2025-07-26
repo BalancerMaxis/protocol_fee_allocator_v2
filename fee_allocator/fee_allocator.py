@@ -533,8 +533,8 @@ class FeeAllocator:
         hh_bribe_df = bribe_df[bribe_df["bribe_platform"] == "hiddenhand"]
         paladin_bribe_df = bribe_df[bribe_df["bribe_platform"] == "paladin"]
 
-        total_hh_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in hh_bribe_df.iterrows())
-        total_paladin_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in paladin_bribe_df.iterrows())
+        total_hh_bribe_usdc = int(hh_bribe_df["amount"].sum() * 1e6)
+        total_paladin_bribe_usdc = int(paladin_bribe_df["amount"].sum() * 1e6)
         
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
@@ -637,14 +637,14 @@ class FeeAllocator:
         quest_boards = {}
         platform_fee_ratios = {}
         
+        with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
+            paladin_abi = json.load(f)
+        
         if not bal_bribes.empty:
             quest_boards["balancer"] = SafeContract(
                 PALADIN_QUEST_BOARDS["balancer"],
-                abi_file_path=f"{base_dir}/abi/paladin_quest_board.json"
+                abi=paladin_abi
             )
-            import json
-            with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
-                paladin_abi = json.load(f)
             w3_contract = self.run_config.mainnet.web3.eth.contract(
                 address=PALADIN_QUEST_BOARDS["balancer"],
                 abi=paladin_abi
@@ -662,7 +662,7 @@ class FeeAllocator:
         if not aura_bribes.empty:
             quest_boards["aura"] = SafeContract(
                 PALADIN_QUEST_BOARDS["aura"],
-                abi_file_path=f"{base_dir}/abi/paladin_quest_board.json"
+                abi=paladin_abi
             )
             w3_contract = self.run_config.mainnet.web3.eth.contract(
                 address=PALADIN_QUEST_BOARDS["aura"],
