@@ -23,7 +23,6 @@ def get_report(start_date, end_date, env_id):
     )
     response.raise_for_status()
     data = response.json()
-    print(data)
     
     usdc = data["withdraws"]["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
     total_net = int(usdc["net"])
@@ -59,25 +58,25 @@ if __name__ == "__main__":
     # run this every other thursday after the end of an epoch
     today = datetime.now()
 
-    # if bool(int(today.strftime("%V")) % 2):
+    if bool(int(today.strftime("%V")) % 2):
         # week number is uneven; there should be a new report
 
-    yesterday = today - timedelta(days=1)
-    epoch_start = today - timedelta(days=14)
+        yesterday = today - timedelta(days=1)
+        epoch_start = today - timedelta(days=14)
 
-    v2_report = get_report("2025-07-16", "2025-07-17", V2_ENV_ID)
+        v2_report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V2_ENV_ID)
 
-    with open(
-        f"fee_allocator/fees_collected/v2_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
-        "w",
-    ) as f:
-        json.dump(v2_report, f, indent=2)
+        with open(
+            f"fee_allocator/fees_collected/v2_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
+            "w",
+        ) as f:
+            json.dump(v2_report, f, indent=2)
 
-    v3_report = get_report("2025-07-16", "2025-07-17", V3_ENV_ID)
+        v3_report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V3_ENV_ID)
 
-    with open(
-        f"fee_allocator/fees_collected/v3_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
-        "w",
-    ) as f:
-        json.dump(v3_report, f, indent=2)
+        with open(
+            f"fee_allocator/fees_collected/v3_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
+            "w",
+        ) as f:
+            json.dump(v3_report, f, indent=2)
 
