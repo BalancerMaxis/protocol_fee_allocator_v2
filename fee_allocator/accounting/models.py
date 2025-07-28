@@ -1,10 +1,18 @@
 from pydantic import BaseModel
 from decimal import Decimal
-from typing import Dict, NewType
+from typing import Dict, NewType, Optional
 
 
 Pools = Dict[NewType("PoolId", str), NewType("Symbol", str)]
 InputFees = Dict[NewType("CorePoolChainName", str), NewType("FeesCollected", int)]
+
+
+class PoolOverride(BaseModel):
+    """
+    Represents pool-specific overrides for voting pool and market platforms.
+    """
+    voting_pool_override: Optional[str] = None  # "bal" or "aura"
+    market_override: str = "hh"  # "hh" (HiddenHand) or "paladin" (Paladin Quest)
 
 
 class GlobalFeeConfig(BaseModel):

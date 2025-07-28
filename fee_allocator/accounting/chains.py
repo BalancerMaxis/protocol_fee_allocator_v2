@@ -21,11 +21,13 @@ from fee_allocator.accounting.models import (
     InputFees,
     AllianceConfig,
     AlliancePool,
-    PartnerPool
+    PartnerPool,
+    PoolOverride
 )
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
-    ALLIANCE_CONFIG_URL
+    ALLIANCE_CONFIG_URL,
+    POOL_OVERRIDES_URL
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
@@ -62,9 +64,12 @@ class CorePoolRunConfig:
         self.core_pools = core_pools
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
-        
-        # Load alliance config from URL
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
+        pool_overrides_raw = requests.get(POOL_OVERRIDES_URL).json()
+        self.pool_overrides: Dict[str, PoolOverride] = {
+            pool_id: PoolOverride(**override_data) 
+            for pool_id, override_data in pool_overrides_raw.items()
+        }
 
         # caches a list of `PoolFeeData` for each chain
         self.use_cache = use_cache

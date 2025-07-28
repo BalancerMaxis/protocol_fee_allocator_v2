@@ -138,6 +138,13 @@ class PayloadVisualizer:
                     groups["Balancer Bribes"].append(tx)
                 else:
                     groups["Other Bribes"].append(tx)
+            elif method in ["createRangedQuest", "createFixedQuest"]:
+                if to_addr == "0x8b2ba835056965808ad88e7ad7866bd57ae75839":  # veBAL Quest Board
+                    groups["Balancer Bribes"].append(tx)
+                elif to_addr == "0x653d8f14292a1c5239d6183b333de1f2e8669310":  # vlAURA Quest Board
+                    groups["Aura Bribes"].append(tx)
+                else:
+                    groups["Other Bribes"].append(tx)
             elif method == "transfer":
                 recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
                 if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
@@ -174,13 +181,25 @@ class PayloadVisualizer:
         for group_name, txs in groups.items():
             for tx in txs:
                 if "Bribe" in group_name:
-                    if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        amount = Decimal(tx["contractInputsValues"]["_amount"])
-                        totals["bribes_usdc"] += amount
-                        if group_name == "Aura Bribes":
-                            totals["aura_bribes_usdc"] += amount
-                        elif group_name == "Balancer Bribes":
-                            totals["bal_bribes_usdc"] += amount
+                    method = tx.get("contractMethod", {}).get("name", "")
+                    if method in ["createRangedQuest", "createFixedQuest"]:
+                        # Paladin Quest - use totalRewardAmount
+                        if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Aura Bribes":
+                                totals["aura_bribes_usdc"] += amount
+                            elif group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
+                    else:
+                        # HiddenHand bribe - use _amount
+                        if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(tx["contractInputsValues"]["_amount"])
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Aura Bribes":
+                                totals["aura_bribes_usdc"] += amount
+                            elif group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
                 elif group_name == "veBAL Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["vebal_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
@@ -205,9 +224,17 @@ class PayloadVisualizer:
         data = {}
         
         if "Bribe" in group_name:
-            data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
-            data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
-            data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
+            method = tx.get("contractMethod", {}).get("name", "")
+            if method in ["createRangedQuest", "createFixedQuest"]:
+                # Paladin Quest transaction
+                data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("gauge", ""))
+                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
+            else:
+                # HiddenHand bribe
+                data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
+                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
         
         elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
