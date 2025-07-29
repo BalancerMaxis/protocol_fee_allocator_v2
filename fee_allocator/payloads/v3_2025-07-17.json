@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1752766839,
+  "createdAt": 1753833171,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -33,7 +33,7 @@
       },
       "contractInputsValues": {
         "_spender": "0xE00fe722e5bE7ad45b1A16066E431E47Df476CeC",
-        "_value": "26211968601"
+        "_value": "26234617201"
       }
     },
     {
@@ -244,7 +244,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x596c65223d151ac5e6dff79910a27283061b128b7fb5ded08a99dc3f53ce4e5c",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "902500500",
         "_maxTokensPerVote": "0",
@@ -330,7 +330,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0xdc4c8613a9c17524273b6224471c350c353cddf2b4684fd21085c83d387393d2",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "1031033200",
         "_maxTokensPerVote": "0",
@@ -416,7 +416,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x0e89bda9685d6b9226b1a02946ab5612d520bc315f305fc7d248980d7d8dccfb",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "2768704200",
         "_maxTokensPerVote": "0",
@@ -459,15 +459,15 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
+        "_proposal": "0x449f1cd28548d32d8ee8cc0c3681e66f6fb24a87c6ffd3c0f3c56dddd914dbf7",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "402700100",
+        "_amount": "583650100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
     },
     {
-      "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
+      "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
       "data": null,
       "contractMethod": {
@@ -504,9 +504,9 @@
       "contractInputsValues": {
         "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "800567200",
+        "_amount": "642265800",
         "_maxTokensPerVote": "0",
-        "_periods": "1"
+        "_periods": "2"
       }
     },
     {
@@ -588,7 +588,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x57215c60f37d91fbfe5c7579b64d5cb54177487e00ac15fb1a47e52fbc2f2cbb",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "1716458200",
         "_maxTokensPerVote": "0",
@@ -674,7 +674,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x49e3ab087c8b94ca651f94dff5184db7878c674102de50146cb15b08c7d46ae4",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "4109700800",
         "_maxTokensPerVote": "0",
@@ -760,7 +760,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x5af8de3497a037fe4db1cb5a7af3ef1b0bf08830c0142ee3781a158b1d77eff3",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "3229262600",
         "_maxTokensPerVote": "0",
@@ -846,7 +846,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0xaaf8a660fecf97718794a9f613cf639a935c69126fdf36039d93b68d1205fc85",
+        "_proposal": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         "_amount": "1090154400",
         "_maxTokensPerVote": "0",
@@ -1090,7 +1090,7 @@
       },
       "contractInputsValues": {
         "_to": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",
-        "_value": "8400996149"
+        "_value": "8400996195"
       }
     },
     {
@@ -1165,32 +1165,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "13735706800"
-      }
-    },
-    {
-      "to": "0xba100000625a3754423978a60c9317c58a424e3D",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "4419209312218793616741"
+        "_value": "13713058200"
       }
     }
   ]
