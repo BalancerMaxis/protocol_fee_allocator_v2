@@ -109,9 +109,8 @@ class FeeAllocator:
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total
 
-                is_alliance_core = pool.is_alliance_pool and not pool.is_alliance_non_core_pool
-                pool.to_aura_incentives_usd += total if is_alliance_core else total * self.run_config.aura_vebal_share
-                pool.to_bal_incentives_usd += Decimal(0) if is_alliance_core else total * (1 - self.run_config.aura_vebal_share)
+                pool.to_aura_incentives_usd += total if pool.is_alliance_core_pool else total * self.run_config.aura_vebal_share
+                pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_core_pool else total * (1 - self.run_config.aura_vebal_share)
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
