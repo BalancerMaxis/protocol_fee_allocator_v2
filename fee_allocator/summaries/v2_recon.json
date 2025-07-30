@@ -133,5 +133,28 @@
     "createdAt": 1752766603,
     "periodStart": 1751500800,
     "periodEnd": 1752710400
+  },
+  {
+    "feesCollected": 181600.69,
+    "totalDistributed": 181600.69,
+    "feesNotDistributed": 0.0,
+    "coreFees": 57701.59,
+    "noncoreFees": 123899.09,
+    "auraIncentives": 24928.83,
+    "balIncentives": 12292.76,
+    "feesToDao": 31524.92,
+    "feesToVebal": 109134.16,
+    "feesToPartners": 3169.53,
+    "feesToBeets": 550.49,
+    "auravebalShare": 0.67,
+    "auraIncentivesPct": 0.1373,
+    "balIncentivesPct": 0.0677,
+    "feesToDaoPct": 0.1736,
+    "feesToVebalPct": 0.601,
+    "feesToPartnersPct": 0.0175,
+    "feesToBeetsPct": 0.003,
+    "createdAt": 1753834869,
+    "periodStart": 1751500800,
+    "periodEnd": 1752710400
   }
 ]

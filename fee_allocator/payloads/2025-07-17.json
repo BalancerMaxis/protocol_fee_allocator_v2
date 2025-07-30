@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1752766863,
+  "createdAt": 1753835112,
   "meta": {
     "name": "Combined V2+V3 Transactions Batch",
     "description": "",
@@ -33,7 +33,7 @@
       },
       "contractInputsValues": {
         "_to": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",
-        "_value": "39925913854"
+        "_value": "39925913877"
       }
     },
     {
@@ -133,32 +133,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "122799630700"
-      }
-    },
-    {
-      "to": "0xba100000625a3754423978a60c9317c58a424e3D",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "4419209312218793616741"
+        "_value": "122847217600"
       }
     },
     {
@@ -183,7 +158,7 @@
       },
       "contractInputsValues": {
         "_spender": "0xE00fe722e5bE7ad45b1A16066E431E47Df476CeC",
-        "_value": "63503792302"
+        "_value": "63456205402"
       }
     },
     {
@@ -224,7 +199,7 @@
       "contractInputsValues": {
         "_proposal": "0xa3c1dac263f7082de1d8a3ab8ac70431a8772ba53fcd7c81e285d99cc31ad336",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1076066900",
+        "_amount": "1075574500",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -267,7 +242,7 @@
       "contractInputsValues": {
         "_proposal": "0xbd7630d0e05b94dc91a35b417ecb286391af930bcc3e87c50f19486fb379fd73",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "710535800",
+        "_amount": "710210600",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -310,7 +285,7 @@
       "contractInputsValues": {
         "_proposal": "0xa081cb17f847afe52e6bbdc5d151f91e7185d33a1746eaa1fe0847637247299c",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "607268600",
+        "_amount": "606990700",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -353,7 +328,7 @@
       "contractInputsValues": {
         "_proposal": "0x621f3eb8fd5653e67afdb1f8a9e00ecd874b66cc9fa5a2cfa0733985196831fe",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2605876600",
+        "_amount": "2604684000",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -654,7 +629,7 @@
       "contractInputsValues": {
         "_proposal": "0xe5e764574f51f588997f73047f8d1d869102330f6cc45a29cab33e68c39dbc0b",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "348542600",
+        "_amount": "267585300",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -697,7 +672,7 @@
       "contractInputsValues": {
         "_proposal": "0xe5e764574f51f588997f73047f8d1d869102330f6cc45a29cab33e68c39dbc0b",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "933052100",
+        "_amount": "1011140600",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -740,7 +715,7 @@
       "contractInputsValues": {
         "_proposal": "0x0ee1182830e2e70a383eb27c840623a1655146c1c6dee0641f3fc65e46bfa005",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1043566500",
+        "_amount": "1041230500",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -783,7 +758,7 @@
       "contractInputsValues": {
         "_proposal": "0x9da569f067c8ce7105bddd07c2dd92a257983c53e631290d7c202d27e7072cbf",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2775113000",
+        "_amount": "2767025100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -826,7 +801,7 @@
       "contractInputsValues": {
         "_proposal": "0xe71103e76460c687649b7fef55f411db9c3f3e14067689822494328394b48e4b",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "918699700",
+        "_amount": "296451900",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -869,7 +844,7 @@
       "contractInputsValues": {
         "_proposal": "0xe71103e76460c687649b7fef55f411db9c3f3e14067689822494328394b48e4b",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "3284158700",
+        "_amount": "3896998400",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -912,7 +887,7 @@
       "contractInputsValues": {
         "_proposal": "0xbd289a16c8632127837dc9aaeaac774103472e81246bc6e73d982e5592d7ffd3",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "897234800",
+        "_amount": "462698900",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -955,7 +930,7 @@
       "contractInputsValues": {
         "_proposal": "0xbd289a16c8632127837dc9aaeaac774103472e81246bc6e73d982e5592d7ffd3",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2687071000",
+        "_amount": "3113583400",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -998,7 +973,7 @@
       "contractInputsValues": {
         "_proposal": "0x9dbc094e3628d47695438a384279c49dbc7ea1ec5195c7a74ec2acf617b35e95",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "876892800",
+        "_amount": "424299000",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1041,7 +1016,7 @@
       "contractInputsValues": {
         "_proposal": "0x9dbc094e3628d47695438a384279c49dbc7ea1ec5195c7a74ec2acf617b35e95",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2723388800",
+        "_amount": "3167923400",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -1084,50 +1059,7 @@
       "contractInputsValues": {
         "_proposal": "0x496571a2859ae746cfca27996c48273736c3efae0cfbd08887654cb12f0ea0c6",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "822012200",
-        "_maxTokensPerVote": "0",
-        "_periods": "2"
-      }
-    },
-    {
-      "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_proposal",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "_token",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_amount",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "_maxTokensPerVote",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "_periods",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "depositBribe",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_proposal": "0x5393491357661cb2d39d5057abeaf751616b755a33a39ac0268b6bba440130f3",
-        "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1211459400",
+        "_amount": "820172100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1170,7 +1102,7 @@
       "contractInputsValues": {
         "_proposal": "0x5393491357661cb2d39d5057abeaf751616b755a33a39ac0268b6bba440130f3",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "6509516300",
+        "_amount": "7698473300",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -1213,7 +1145,7 @@
       "contractInputsValues": {
         "_proposal": "0x032da7c2d942c0e5982a4c06651997dccbe2003f8930e8670ed63d6806e7380e",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "681886000",
+        "_amount": "680359600",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1256,7 +1188,7 @@
       "contractInputsValues": {
         "_proposal": "0xb77540810d85a619ece994507eea9d81cdf80853be8c230dc60c8ca28f3695af",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "393671700",
+        "_amount": "286758700",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1299,7 +1231,7 @@
       "contractInputsValues": {
         "_proposal": "0xb77540810d85a619ece994507eea9d81cdf80853be8c230dc60c8ca28f3695af",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1078311700",
+        "_amount": "1181929700",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -1813,15 +1745,15 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
+        "_proposal": "0x449f1cd28548d32d8ee8cc0c3681e66f6fb24a87c6ffd3c0f3c56dddd914dbf7",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "402700100",
+        "_amount": "583650100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
     },
     {
-      "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
+      "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
       "data": null,
       "contractMethod": {
@@ -1858,9 +1790,9 @@
       "contractInputsValues": {
         "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "800567200",
+        "_amount": "642265800",
         "_maxTokensPerVote": "0",
-        "_periods": "1"
+        "_periods": "2"
       }
     },
     {

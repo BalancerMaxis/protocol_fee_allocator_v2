@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1752766839,
+  "createdAt": 1753835089,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -33,7 +33,7 @@
       },
       "contractInputsValues": {
         "_spender": "0xE00fe722e5bE7ad45b1A16066E431E47Df476CeC",
-        "_value": "26211968601"
+        "_value": "26234617201"
       }
     },
     {
@@ -459,15 +459,15 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
+        "_proposal": "0x449f1cd28548d32d8ee8cc0c3681e66f6fb24a87c6ffd3c0f3c56dddd914dbf7",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "402700100",
+        "_amount": "583650100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
     },
     {
-      "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
+      "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
       "data": null,
       "contractMethod": {
@@ -504,9 +504,9 @@
       "contractInputsValues": {
         "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "800567200",
+        "_amount": "642265800",
         "_maxTokensPerVote": "0",
-        "_periods": "1"
+        "_periods": "2"
       }
     },
     {
@@ -1090,7 +1090,7 @@
       },
       "contractInputsValues": {
         "_to": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",
-        "_value": "8400996149"
+        "_value": "8400996195"
       }
     },
     {
@@ -1165,32 +1165,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "13735706800"
-      }
-    },
-    {
-      "to": "0xba100000625a3754423978a60c9317c58a424e3D",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "4419209312218793616741"
+        "_value": "13713058200"
       }
     }
   ]
