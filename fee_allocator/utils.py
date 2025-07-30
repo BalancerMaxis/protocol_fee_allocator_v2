@@ -46,8 +46,6 @@ def get_last_thursday_odd_week():
 
 
 def get_hh_aura_target(target: str) -> str:
-    # TODO: remove once hh api comes back up
-    return "0x0000000000000000000000000000000000000000000000000000000000000000"
     response = requests.get(f"{HH_API_URL}/aura")
     options = response.json()["data"]
     for option in options:
