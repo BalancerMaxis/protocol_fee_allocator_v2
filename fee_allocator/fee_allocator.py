@@ -62,7 +62,7 @@ class FeeAllocator:
         )
         self.book = AddrBook("mainnet").flatbook
 
-    def allocate(self):
+    def allocate(self, redistribute=True):
         """
         Allocates protocol fees to core pools and non-core pools according to BIP-734.
         Core pools: 70% voting incentives, 12.5% veBAL, 17.5% DAO
@@ -71,7 +71,8 @@ class FeeAllocator:
         self.run_config.set_core_pool_chains_data()
         self.run_config.set_aura_vebal_share()
         self.run_config.set_initial_pool_allocation()
-        self.redistribute_fees()
+        if redistribute:
+            self.redistribute_fees()
 
     def redistribute_fees(self):
         """
@@ -107,12 +108,42 @@ class FeeAllocator:
                 total = total_fees_to_redistribute * weight
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total
-                pool.to_aura_incentives_usd += total if pool.is_alliance_pool else total * self.run_config.aura_vebal_share
-                pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_pool else total * (1 - self.run_config.aura_vebal_share)
+
+                pool.to_aura_incentives_usd += total if pool.is_alliance_core_pool else total * self.run_config.aura_vebal_share
+                pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_core_pool else total * (1 - self.run_config.aura_vebal_share)
 
         self._handle_aura_min(buffer=0.25)
         self._handle_aura_min()
         self._filter_dusty_bal_incentives()
+    
+    def generate_artifacts(self, include_bal_transfer: bool = True) -> Dict[str, Path]:
+        """
+        Generates all fee allocation artifacts (CSVs and payload).
+        """
+        logger.info("generating fee allocation artifacts")
+        
+        # Generate CSVs
+        incentives_path = self.generate_incentives_csv()
+        bribe_path = self.generate_bribe_csv()
+        alliance_path = self.generate_alliance_csv()
+        partner_path = self.generate_partner_csv()
+        noncore_path = self.generate_noncore_csv()
+        
+        payload_path = self.generate_bribe_payload(
+            bribe_path, 
+            partner_csv=partner_path,
+            alliance_csv=alliance_path,
+            include_bal_transfer=include_bal_transfer
+        )
+        
+        return {
+            "incentives_csv": incentives_path,
+            "bribe_csv": bribe_path,
+            "alliance_csv": alliance_path,
+            "partner_csv": partner_path,
+            "noncore_csv": noncore_path,
+            "payload": payload_path
+        }
 
     def _handle_aura_min(self, buffer=0):
         """
@@ -132,7 +163,7 @@ class FeeAllocator:
 
                 for pool in chain.core_pools:
                     if pool.to_aura_incentives_usd < min_aura_incentive or (
-                        pool.override and pool.override.voting_pool == "bal"
+                        pool.voting_pool_override == "bal"
                     ):
                         debt_to_aura += pool.to_aura_incentives_usd
                         pools_below_min.append(pool)
@@ -252,6 +283,7 @@ class FeeAllocator:
                         "target": core_pool.gauge_address,
                         "platform": "balancer",
                         "amount": round(core_pool.to_bal_incentives_usd, 4),
+                        "bribe_platform": core_pool.bribe_platform,
                     },
                 )
                 output.append(
@@ -259,11 +291,12 @@ class FeeAllocator:
                         "target": core_pool.gauge_address,
                         "platform": "aura",
                         "amount": round(core_pool.to_aura_incentives_usd, 4),
+                        "bribe_platform": core_pool.bribe_platform,
                     },
                 )
 
-        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd for chain in self.run_config.all_chains)
-        noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd for chain in self.run_config.all_chains)
+        noncore_total_to_dao_usd = sum(chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd + chain.partner_noncore_to_dao_usd for chain in self.run_config.all_chains)
+        noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd for chain in self.run_config.all_chains)
         output.append(
             {
                 "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
@@ -317,7 +350,7 @@ class FeeAllocator:
                         ),
                         "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
-                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools),
+                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools) or any(pool.pool_id == core_pool.pool_id for pool in chain.partner_pools),
                     },
                 )
 
@@ -370,35 +403,87 @@ class FeeAllocator:
         df.to_csv(output_path, index=False)
         return output_path
     
-    def generate_partner_csv(
-        self, output_path: Path = Path("fee_allocator/allocations/partner")
+    def generate_alliance_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/alliance")
     ) -> Path:
-        logger.info("generating partner csv")
+        logger.info("generating alliance fee distribution csv")
         output = []
+        
         for chain in self.run_config.all_chains:
+            # Process alliance pools
             for alliance_pool in chain.alliance_pools:
                 member = next((m for m in self.run_config.alliance_config.alliance_members if alliance_pool.partner == m.name), None)
+                if not member:
+                    logger.warning(f"Alliance member '{alliance_pool.partner}' not found in alliance config")
+                    continue
+
                 core_pool = next((p for p in chain.core_pools if p.pool_id == alliance_pool.pool_id), None)
                 noncore_pool = next((p for p in chain.alliance_noncore_fee_data if p.pool_id == alliance_pool.pool_id), None)
 
                 if core_pool:
                     partner_fee = core_pool.to_partner_usd
                     pool_id = core_pool.pool_id
+                    pool_type = "core"
                 elif noncore_pool:
                     partner_fee = chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
                     pool_id = noncore_pool.pool_id
+                    pool_type = "non-core"
                 else:
                     continue
 
                 output.append({
                     "pool_id": pool_id,
                     "chain": chain.name,
-                    "partner": alliance_pool.partner,
+                    "alliance_member": alliance_pool.partner,
                     "amount": partner_fee,
                     "target": member.multisig_address,
-                    "pool_type": "core" if core_pool else "non-core"
+                    "pool_type": pool_type
                 })
 
+        df = pd.DataFrame(output)
+        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
+        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_alliance_{start_date}_{end_date}.csv"
+        output_path.parent.mkdir(exist_ok=True)
+        df.to_csv(output_path, index=False)
+        return output_path
+
+    def generate_partner_csv(
+        self, output_path: Path = Path("fee_allocator/allocations/partner")
+    ) -> Path:
+        logger.info("generating partner fee distribution csv")
+        output = []
+        
+        if self.run_config.alliance_config.partners:
+            for chain in self.run_config.all_chains:
+                # Core partner pools
+                for pool in chain.core_pools:
+                    if pool.is_partner_pool:
+                        partner, _ = pool.partner_info
+                        output.append({
+                            "pool_id": pool.pool_id,
+                            "chain": chain.name,
+                            "partner": partner.name,
+                            "amount": pool.to_partner_usd,
+                            "target": partner.multisig_address,
+                            "pool_type": "core"
+                        })
+                
+                # Non-core partner pools
+                for pool_data in chain.partner_noncore_fee_data:
+                    partner_fee = chain.get_partner_noncore_fee(pool_data.pool_id)
+                    if partner_fee > 0:
+                        partner_info = self.run_config.alliance_config.get_partner_pool_config(pool_data.pool_id, chain.name, is_core=False)
+                        if partner_info:
+                            partner, _ = partner_info
+                            output.append({
+                                "pool_id": pool_data.pool_id,
+                                "chain": chain.name,
+                                "partner": partner.name,
+                                "amount": partner_fee,
+                                "target": partner.multisig_address,
+                                "pool_type": "non-core"
+                            })
 
         df = pd.DataFrame(output)
         start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
@@ -413,6 +498,7 @@ class FeeAllocator:
         input_csv: str,
         output_path: Path = Path("fee_allocator/payloads"),
         partner_csv: str = None,
+        alliance_csv: str = None,
         include_bal_transfer: bool = True
     ) -> Path:
         """builds a safe payload from the bribe csv
@@ -421,6 +507,7 @@ class FeeAllocator:
             input_csv: Path to the bribe CSV file
             output_path: Directory to save the payload JSON
             partner_csv: Optional path to partner CSV file
+            alliance_csv: Optional path to alliance CSV file
             include_bal_transfer: Whether to include BAL transfer to veBAL (default True)
                                 Set to False for v2 in combined mode to avoid duplication
         """
@@ -442,28 +529,48 @@ class FeeAllocator:
         payment_df = df[df["platform"] == "payment"].iloc[0]
         beets_df = df[df["platform"] == "beets"].iloc[0]
 
-        total_bribe_usdc = sum(round(row["amount"] * 1e6) for _, row in bribe_df.iterrows())
+        hh_bribe_df = bribe_df[bribe_df["bribe_platform"] == "hiddenhand"]
+        paladin_bribe_df = bribe_df[bribe_df["bribe_platform"] == "paladin"]
+
+        total_hh_bribe_usdc = int(hh_bribe_df["amount"].sum() * 1e6)
+        total_paladin_bribe_usdc = int(paladin_bribe_df["amount"].sum() * 1e6)
+        
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
-        """bribe txs"""
-        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1) # 1 wei buffer
+        if total_hh_bribe_usdc > 0:
+            self._process_hiddenhand_bribes(
+                hh_bribe_df,
+                total_hh_bribe_usdc,
+                usdc,
+                bal_bribe_market,
+                aura_bribe_market
+            )
+        
+        if total_paladin_bribe_usdc > 0:
+            self._process_paladin_quests(
+                paladin_bribe_df,
+                total_paladin_bribe_usdc,
+                usdc
+            )
 
-        for _, row in bribe_df.iterrows():
-            if int(row["amount"]) == 0:
-                continue
-            prop_hash = self._get_prop_hash(row["platform"], row["target"])
-            mantissa = round(row["amount"] * 1e6)
-
-            if row["platform"] == "balancer":
-                bal_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 2)
-            elif row["platform"] == "aura":
-                aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
-
-        """transfer txs"""
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
 
+        # Process alliance transfers
+        alliance_fee_usdc_spent = 0
+        if alliance_csv:
+            try:
+                alliance_df = pd.read_csv(alliance_csv)
+                for _, row in alliance_df.iterrows():
+                    if row["amount"] > 0:
+                        alliance_amount = round(row["amount"] * 1e6)
+                        alliance_fee_usdc_spent += alliance_amount
+                        usdc.transfer(row["target"], alliance_amount)
+            except pd.errors.EmptyDataError:
+                logger.info(f"no alliance members found for protocol {self.run_config.protocol_version}")
+        
+        # Process partner transfers
         partner_fee_usdc_spent = 0
         if partner_csv:
             try:
@@ -474,7 +581,7 @@ class FeeAllocator:
                         partner_fee_usdc_spent += partner_amount
                         usdc.transfer(row["target"], partner_amount)
             except pd.errors.EmptyDataError:
-                logger.info(f"no alliance members found for protocol {self.run_config.protocol_version}")
+                logger.info(f"no partners found for protocol {self.run_config.protocol_version}")
 
         datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
 
@@ -501,6 +608,99 @@ class FeeAllocator:
         builder.output_payload(output_path)
         
         return output_path
+    
+    def _process_hiddenhand_bribes(self, bribe_df, total_bribe_usdc, usdc, bal_bribe_market, aura_bribe_market):
+        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1)  # 1 wei buffer
+        
+        for _, row in bribe_df.iterrows():
+            if int(row["amount"]) == 0:
+                continue
+                
+            prop_hash = self._get_prop_hash(row["platform"], row["target"])
+            mantissa = round(row["amount"] * 1e6)
+            
+            if row["platform"] == "balancer":
+                bal_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 2)
+            elif row["platform"] == "aura":
+                aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
+    
+    def _process_paladin_quests(self, bribe_df, total_bribe_usdc, usdc):
+        PALADIN_QUEST_BOARDS = {
+            "balancer": "0x8b2ba835056965808aD88e7Ad7866BD57aE75839",
+            "aura": "0x653D8f14292A1C5239d6183b333De1F2e8669310"
+        }
+        
+        bal_bribes = bribe_df[bribe_df["platform"] == "balancer"]
+        aura_bribes = bribe_df[bribe_df["platform"] == "aura"]
+        
+        quest_boards = {}
+        platform_fee_ratios = {}
+        
+        with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
+            paladin_abi = json.load(f)
+        
+        if not bal_bribes.empty:
+            quest_boards["balancer"] = SafeContract(
+                PALADIN_QUEST_BOARDS["balancer"],
+                abi=paladin_abi
+            )
+            w3_contract = self.run_config.mainnet.web3.eth.contract(
+                address=PALADIN_QUEST_BOARDS["balancer"],
+                abi=paladin_abi
+            )
+            try:
+                platform_fee_ratios["balancer"] = w3_contract.functions.platformFeeRatio().call()
+            except Exception as e:
+                print(f"Failed to fetch platform fee ratio: {e}. Using default 4%")
+                platform_fee_ratios["balancer"] = 400  # 4% in basis points
+            
+            bal_total = sum(round(row["amount"] * 1e6) for _, row in bal_bribes.iterrows())
+            bal_total_with_fee = int(bal_total * (1 + platform_fee_ratios["balancer"] / 10000))
+            usdc.approve(PALADIN_QUEST_BOARDS["balancer"], bal_total_with_fee)
+            
+        if not aura_bribes.empty:
+            quest_boards["aura"] = SafeContract(
+                PALADIN_QUEST_BOARDS["aura"],
+                abi=paladin_abi
+            )
+            w3_contract = self.run_config.mainnet.web3.eth.contract(
+                address=PALADIN_QUEST_BOARDS["aura"],
+                abi=paladin_abi
+            )
+            try:
+                platform_fee_ratios["aura"] = w3_contract.functions.platformFeeRatio().call()
+            except Exception as e:
+                print(f"Failed to fetch platform fee ratio: {e}. Using default 4%")
+                platform_fee_ratios["aura"] = 400  # 4% in basis points
+            
+            aura_total = sum(round(row["amount"] * 1e6) for _, row in aura_bribes.iterrows())
+            aura_total_with_fee = int(aura_total * (1 + platform_fee_ratios["aura"] / 10000))
+            usdc.approve(PALADIN_QUEST_BOARDS["aura"], aura_total_with_fee)
+        
+        for _, row in bribe_df.iterrows():
+            if int(row["amount"]) == 0:
+                continue
+                
+            mantissa = round(row["amount"] * 1e6)
+            platform = row["platform"]
+            quest_board = quest_boards[platform]
+            fee_ratio = platform_fee_ratios[platform]
+
+            quest_board.createRangedQuest(
+                row["target"],              # gauge
+                self.book["tokens/USDC"],   # rewardToken
+                True,                       # startNextPeriod
+                2,                          # duration
+                1,                          # minRewardPerVote (1 wei minimum)
+                mantissa,                   # maxRewardPerVote (full amount maximum)
+                mantissa,                   # totalRewardAmount
+                int(mantissa * fee_ratio / 10000), # feeAmount (convert from BPS)
+                0,                          # voteType (0 = NORMAL)
+                0,                          # closeType (0 = NORMAL)
+                []                          # voterList (no restrictions)
+            )
+
+        logger.info(f"Paladin Quest creation: {len(bribe_df)} quests totaling ${total_bribe_usdc/1e6}")
 
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:
@@ -545,12 +745,15 @@ class FeeAllocator:
                 total_partner += pool.to_partner_usd
                 total_beets += pool.to_beets_usd
 
-            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd
-            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd
-            total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd
+            total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd + chain.partner_noncore_to_dao_usd
+            total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd + chain.partner_noncore_to_vebal_usd
+            total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd
 
             for noncore_pool in chain.alliance_noncore_fee_data:
                 total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
+            
+            for noncore_pool in chain.partner_noncore_fee_data:
+                total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
 
         # Total distributed includes all allocations including partner fees
         total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner + total_beets
@@ -565,7 +768,7 @@ class FeeAllocator:
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
         total_core_fees = sum(chain.total_earned_fees_usd_twap for chain in self.run_config.all_chains)
-        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected for chain in self.run_config.all_chains)
+        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected + chain.partner_noncore_fees_collected for chain in self.run_config.all_chains)
         
         summary = {
             "feesCollected": float(round(total_fees, 2)),

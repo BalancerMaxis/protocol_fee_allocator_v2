@@ -1,0 +1,46 @@
+[
+  {
+    "inputs": [],
+    "name": "platformFeeRatio",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"name": "gauge", "type": "address"},
+      {"name": "rewardToken", "type": "address"},
+      {"name": "startNextPeriod", "type": "bool"},
+      {"name": "duration", "type": "uint48"},
+      {"name": "rewardPerVote", "type": "uint256"},
+      {"name": "totalRewardAmount", "type": "uint256"},
+      {"name": "feeAmount", "type": "uint256"},
+      {"name": "voteType", "type": "uint8"},
+      {"name": "closeType", "type": "uint8"},
+      {"name": "voterList", "type": "address[]"}
+    ],
+    "name": "createFixedQuest",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"name": "gauge", "type": "address"},
+      {"name": "rewardToken", "type": "address"},
+      {"name": "startNextPeriod", "type": "bool"},
+      {"name": "duration", "type": "uint48"},
+      {"name": "minRewardPerVote", "type": "uint256"},
+      {"name": "maxRewardPerVote", "type": "uint256"},
+      {"name": "totalRewardAmount", "type": "uint256"},
+      {"name": "feeAmount", "type": "uint256"},
+      {"name": "voteType", "type": "uint8"},
+      {"name": "closeType", "type": "uint8"},
+      {"name": "voterList", "type": "address[]"}
+    ],
+    "name": "createRangedQuest",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
