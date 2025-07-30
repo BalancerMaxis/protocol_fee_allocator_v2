@@ -56,7 +56,7 @@ def get_report(start_date, end_date, env_id):
 
 if __name__ == "__main__":
     # run this every other thursday after the end of an epoch
-    today = datetime.now()
+    today = datetime(2025, 7, 17)
 
     if bool(int(today.strftime("%V")) % 2):
         # week number is uneven; there should be a new report
