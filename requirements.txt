@@ -1,4 +1,4 @@
 joblib==1.5.1
 html5lib==1.1
 rich==13.7.0
-git+https://github.com/BalancerMaxis/bal_addresses
+git+https://github.com/BalancerMaxis/bal_addresses.git@feat/remove-brownie-dep
