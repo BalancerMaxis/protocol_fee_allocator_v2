@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from decimal import Decimal
 from typing import Dict, NewType, Optional
 
@@ -70,6 +70,20 @@ class AllianceFeeAllocation(BaseModel):
     vote_incentive_pct: Decimal | None = None  # None for non-core pools
     partner_share_pct: Decimal
     dao_share_pct: Decimal
+    
+    @validator('dao_share_pct')
+    def validate_percentages(cls, v, values):
+        # For core pools (vote_incentive_pct is not None), all percentages must sum to 1
+        if 'vote_incentive_pct' in values and values['vote_incentive_pct'] is not None:
+            total = values['vote_incentive_pct'] + values.get('vebal_share_pct', 0) + values.get('partner_share_pct', 0) + v
+            if abs(total - Decimal('1')) > Decimal('0.0001'):
+                raise ValueError(f'Fee percentages must sum to 100%, got {total * 100}%')
+        # For non-core pools, vebal + partner + dao must sum to 1
+        elif 'vebal_share_pct' in values and 'partner_share_pct' in values:
+            total = values['vebal_share_pct'] + values['partner_share_pct'] + v
+            if abs(total - Decimal('1')) > Decimal('0.0001'):
+                raise ValueError(f'Fee percentages must sum to 100%, got {total * 100}%')
+        return v
 
 
 class AllianceThresholds(BaseModel):
@@ -98,6 +112,20 @@ class PartnerFeeAllocation(BaseModel):
     vote_incentive_pct: Decimal | None = None  # Only for core pools
     partner_share_pct: Decimal
     dao_share_pct: Decimal
+    
+    @validator('dao_share_pct')
+    def validate_percentages(cls, v, values):
+        # For core pools (vote_incentive_pct is not None), all percentages must sum to 1
+        if 'vote_incentive_pct' in values and values['vote_incentive_pct'] is not None:
+            total = values['vote_incentive_pct'] + values.get('vebal_share_pct', 0) + values.get('partner_share_pct', 0) + v
+            if abs(total - Decimal('1')) > Decimal('0.0001'):
+                raise ValueError(f'Fee percentages must sum to 100%, got {total * 100}%')
+        # For non-core pools, vebal + partner + dao must sum to 1
+        elif 'vebal_share_pct' in values and 'partner_share_pct' in values:
+            total = values['vebal_share_pct'] + values['partner_share_pct'] + v
+            if abs(total - Decimal('1')) > Decimal('0.0001'):
+                raise ValueError(f'Fee percentages must sum to 100%, got {total * 100}%')
+        return v
 
 
 class Partner(BaseModel):
