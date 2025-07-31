@@ -20,11 +20,14 @@ from fee_allocator.accounting.models import (
     GlobalFeeConfig,
     InputFees,
     AllianceConfig,
-    AlliancePool
+    AlliancePool,
+    PartnerPool,
+    PoolOverride
 )
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
-    ALLIANCE_CONFIG_URL
+    ALLIANCE_CONFIG_URL,
+    POOL_OVERRIDES_URL
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
@@ -62,6 +65,11 @@ class CorePoolRunConfig:
 
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
+        pool_overrides_raw = requests.get(POOL_OVERRIDES_URL).json()
+        self.pool_overrides: Dict[str, PoolOverride] = {
+            pool_id: PoolOverride(**override_data) 
+            for pool_id, override_data in pool_overrides_raw.items()
+        }
 
         # caches a list of `PoolFeeData` for each chain
         self.use_cache = use_cache
@@ -197,6 +205,8 @@ class CorePoolChain(AbstractCorePoolChain):
         self.pool_fee_data: Union[list[PoolFeeData], None] = None
         self.core_pools: List[PoolFee] = []
         self.alliance_noncore_fee_data: List[PoolFeeData] = []
+        self.partner_pools: List[PartnerPool] = []
+        self.partner_noncore_fee_data: List[PoolFeeData] = []
 
     def _set_block_range(self) -> tuple[int, int]:
         start = self.subgraph.get_first_block_after_utc_timestamp(self.chains.date_range[0])
@@ -247,6 +257,35 @@ class CorePoolChain(AbstractCorePoolChain):
                     logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
             except Exception as e:
                 logger.error(f"Failed to get TVL for v{protocol_version} Alliance pool {pool.pool_id}: {e}")
+    
+    def set_partner_pools(self):
+        if not self.chains.alliance_config.partners:
+            return
+        
+        allocator_version = int(self.chains.protocol_version.replace("v", ""))
+        
+        for partner in self.chains.alliance_config.partners:
+            if not partner.active:
+                continue
+                
+            for pool in partner.pools:
+                if not pool.active:
+                    continue
+                    
+                if pool.network != self.name:
+                    continue
+                
+                protocol_version = self.subgraph.get_pool_protocol_version(pool.pool_id)
+                
+                if protocol_version not in [2, 3]:
+                    logger.warning(f"Partner pool {pool.pool_id} has unknown protocol version {protocol_version}")
+                    continue
+                
+                if protocol_version != allocator_version:
+                    continue
+                
+                self.partner_pools.append(pool)
+                logger.info(f"v{protocol_version} Partner pool: {pool.pool_id} from {partner.name} added (no criteria applied)")
 
     def set_pool_fee_data(self):
         """
@@ -272,13 +311,17 @@ class CorePoolChain(AbstractCorePoolChain):
         cached_data = joblib.load(self._cache_file_path())
         self.alliance_pools = cached_data.get('alliance_pools', [])
         self.alliance_noncore_fee_data = cached_data.get('alliance_noncore_fee_data', [])
+        self.partner_pools = cached_data.get('partner_pools', [])
+        self.partner_noncore_fee_data = cached_data.get('partner_noncore_fee_data', [])
         return cached_data.get('pool_fee_data', [])
 
     def _save_core_pools_to_cache(self, pool_data: list[PoolFeeData]) -> None:
         cache_data = {
             'pool_fee_data': pool_data,
             'alliance_pools': self.alliance_pools,
-            'alliance_noncore_fee_data': self.alliance_noncore_fee_data
+            'alliance_noncore_fee_data': self.alliance_noncore_fee_data,
+            'partner_pools': self.partner_pools,
+            'partner_noncore_fee_data': self.partner_noncore_fee_data
         }
         joblib.dump(cache_data, self._cache_file_path())
 
@@ -287,8 +330,9 @@ class CorePoolChain(AbstractCorePoolChain):
         fetches various chain data from subgraph and returns a list of `PoolFeeData` based on the core pool list
         """
         self._init_alliance_pools()
+        self.set_partner_pools()
 
-        if not self.bal_pools_gauges.core_pools and not self.alliance_pools:
+        if not self.bal_pools_gauges.core_pools and not self.alliance_pools and not self.partner_pools:
             return []
 
         logger.info(f"getting snapshots for {self.name}")
@@ -312,9 +356,18 @@ class CorePoolChain(AbstractCorePoolChain):
         )
 
         alliance_pool_tuples = [(pool.pool_id, pool.partner) for pool in self.alliance_pools]
+        
+        # Get partner names for partner pools
+        partner_pool_tuples = []
+        for partner in self.chains.alliance_config.partners or []:
+            for pool in partner.pools:
+                # Check if this partner pool is in our active partner pools list
+                if any(p.pool_id == pool.pool_id for p in self.partner_pools):
+                    partner_pool_tuples.append((pool.pool_id, f"Partner:{partner.name}"))
 
         core_pools_dict = dict(core_pools_list)
         core_pools_dict.update(dict(alliance_pool_tuples))
+        core_pools_dict.update(dict(partner_pool_tuples))
         core_pools_list = list(core_pools_dict.items())
 
         for pool_id, label in core_pools_list:
@@ -323,20 +376,48 @@ class CorePoolChain(AbstractCorePoolChain):
             if protocol_version == 3 and self.chains.protocol_version == "v3":
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
                 alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                partner_pool = next((p for p in self.partner_pools if p.pool_id == pool_id), None)
+                
+                # Check if this is a non-core pool (either alliance or partner)
+                is_non_core = False
                 if alliance_pool and alliance_pool.pool_type != "core":
                     self.alliance_noncore_fee_data.append(pool_fee_data)
-                else:
+                    is_non_core = True
+                elif partner_pool:
+                    # Partner pools can be in core pools list or not
+                    # If it's not in the original core pools list, it's non-core
+                    original_core_pool_ids = [pool_id for pool_id, _ in self.bal_pools_gauges.core_pools]
+                    if pool_id not in original_core_pool_ids:
+                        self.partner_noncore_fee_data.append(pool_fee_data)
+                        is_non_core = True
+                
+                if not is_non_core:
                     pools_data.append(pool_fee_data)
 
             elif protocol_version == 2 and self.chains.protocol_version == "v2":
                 start_snap = self._get_latest_snapshot(start_snaps, pool_id)
                 end_snap = self._get_latest_snapshot(end_snaps, pool_id)
                 alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
-                if alliance_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                partner_pool = next((p for p in self.partner_pools if p.pool_id == pool_id), None)
+                
+                # Partner pools bypass _should_add_pool check
+                if alliance_pool or partner_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
+                    
+                    # Check if this is a non-core pool (either alliance or partner)
+                    is_non_core = False
                     if alliance_pool and alliance_pool.pool_type != "core":
                         self.alliance_noncore_fee_data.append(pool_fee_data)
-                    else:
+                        is_non_core = True
+                    elif partner_pool:
+                        # Partner pools can be in core pools list or not
+                        # If it's not in the original core pools list, it's non-core
+                        original_core_pool_ids = [pool_id for pool_id, _ in self.bal_pools_gauges.core_pools]
+                        if pool_id not in original_core_pool_ids:
+                            self.partner_noncore_fee_data.append(pool_fee_data)
+                            is_non_core = True
+                    
+                    if not is_non_core:
                         pools_data.append(pool_fee_data)
 
         return pools_data
@@ -428,6 +509,10 @@ class CorePoolChain(AbstractCorePoolChain):
         except NoPricesFoundError:
             return None
         
+    def get_beets_factor(self) -> Decimal:
+        """Returns the Beets share factor for this chain (0.5 for Optimism, 0 for others)"""
+        return Decimal(self.chains.fee_config.beets_share_pct) if self.name == "optimism" else Decimal(0)
+    
     def get_alliance_noncore_partner_fee(self, pool_id: str) -> Decimal:
         noncore_pool = next((p for p in self.alliance_noncore_fee_data if p.pool_id == pool_id), None)
         if not noncore_pool or self.alliance_noncore_fees_collected == 0:
@@ -465,32 +550,32 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def noncore_fees_collected(self) -> Decimal:
-        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_collected, Decimal(0))
+        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_collected - self.partner_noncore_fees_collected, Decimal(0))
 
     @property
     @require_pool_fee_data
     def noncore_to_dao_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        return self.noncore_fees_collected * (1 - beets_share_pct) * self.chains.fee_config.noncore_dao_share_pct
+        beets_factor = self.get_beets_factor()
+        return self.noncore_fees_collected * (1 - beets_factor) * self.chains.fee_config.noncore_dao_share_pct
 
     @property
     @require_pool_fee_data
     def noncore_to_vebal_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        return self.noncore_fees_collected * (1 - beets_share_pct) * self.chains.fee_config.noncore_vebal_share_pct
+        beets_factor = self.get_beets_factor()
+        return self.noncore_fees_collected * (1 - beets_factor) * self.chains.fee_config.noncore_vebal_share_pct
     
     @property
     @require_pool_fee_data
     def noncore_to_beets_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        if beets_share_pct == 0:
+        beets_factor = self.get_beets_factor()
+        if beets_factor == 0:
             return Decimal(0)
-        return self.noncore_fees_collected * beets_share_pct
+        return self.noncore_fees_collected * beets_factor
 
     @property
     @require_pool_fee_data
     def total_fees_earned(self) -> Decimal:
-        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_collected
+        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_collected + self.partner_noncore_fees_collected
     
     @property
     def alliance_noncore_fees_collected(self) -> Decimal:
@@ -498,23 +583,88 @@ class CorePoolChain(AbstractCorePoolChain):
 
     @property
     def alliance_noncore_to_dao_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct * (1 - beets_share_pct)
+        beets_factor = self.get_beets_factor()
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct * (1 - beets_factor)
 
     @property
     def alliance_noncore_to_vebal_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct  * (1 - beets_share_pct)
+        beets_factor = self.get_beets_factor()
+        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct  * (1 - beets_factor)
 
     @property
     def alliance_noncore_to_beets_usd(self) -> Decimal:
-        beets_share_pct = self.chains.fee_config.beets_share_pct if self.name == "optimism" else 0
-        if beets_share_pct == 0:
+        beets_factor = self.get_beets_factor()
+        if beets_factor == 0:
             return Decimal(0)
-        return self.alliance_noncore_fees_collected * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct) * beets_share_pct
+        return self.alliance_noncore_fees_collected * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct) * beets_factor
+    
+    @property
+    def partner_noncore_fees_collected(self) -> Decimal:
+        return sum(pool.total_earned_fees_usd_twap for pool in self.partner_noncore_fee_data)
+    
+    def get_partner_noncore_fee(self, pool_id: str) -> Decimal:
+        """Get partner fee for a specific non-core partner pool"""
+        noncore_pool = next((p for p in self.partner_noncore_fee_data if p.pool_id == pool_id), None)
+        if not noncore_pool or self.partner_noncore_fees_collected == 0:
+            return Decimal(0)
+        
+        # Find the partner and fee config for this pool
+        partner_info = self.chains.alliance_config.get_partner_pool_config(pool_id, self.name, is_core=False)
+        if not partner_info:
+            return Decimal(0)
+            
+        _, fee_config = partner_info
+        return (
+            noncore_pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected
+            * self.partner_noncore_fees_collected
+            * fee_config.partner_share_pct
+        )
+    
+    @property
+    def partner_noncore_to_dao_usd(self) -> Decimal:
+        """DAO fees from partner non-core pools"""
+        total = Decimal(0)
+        for pool in self.partner_noncore_fee_data:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
+                beets_factor = self.get_beets_factor()
+                total += self.partner_noncore_fees_collected * pool_share * fee_config.dao_share_pct * (1 - beets_factor)
+        return total
+    
+    @property
+    def partner_noncore_to_vebal_usd(self) -> Decimal:
+        """veBAL fees from partner non-core pools"""
+        total = Decimal(0)
+        for pool in self.partner_noncore_fee_data:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
+                beets_factor = self.get_beets_factor()
+                total += self.partner_noncore_fees_collected * pool_share * fee_config.vebal_share_pct * (1 - beets_factor)
+        return total
+    
+    @property
+    def partner_noncore_to_beets_usd(self) -> Decimal:
+        """Beets fees from partner non-core pools (Optimism only)"""
+        beets_factor = self.get_beets_factor()
+        if beets_factor == 0:
+            return Decimal(0)
+        
+        total = Decimal(0)
+        for pool in self.partner_noncore_fee_data:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
+                # Beets gets a share of the non-partner portion
+                total += self.partner_noncore_fees_collected * pool_share * (1 - fee_config.partner_share_pct) * beets_factor
+        return total
 
     @property
     @round(4)
     def total_to_vebal_usd(self) -> Decimal:
         core_vebal = sum(pool.to_vebal_usd for pool in self.core_pools)
-        return core_vebal +  self.noncore_to_vebal_usd + self.alliance_noncore_to_vebal_usd
+        return core_vebal +  self.noncore_to_vebal_usd + self.alliance_noncore_to_vebal_usd + self.partner_noncore_to_vebal_usd
