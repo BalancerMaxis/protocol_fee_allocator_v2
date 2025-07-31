@@ -5,7 +5,6 @@ from decimal import Decimal
 
 from bal_tools.models import PoolSnapshot, TWAPResult
 from fee_allocator.accounting.interfaces import AbstractPoolFee
-from fee_allocator.accounting.overrides import PoolFeeOverride, overrides
 
 if TYPE_CHECKING:
     from fee_allocator.accounting.chains import CorePoolChain
@@ -87,7 +86,14 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.is_alliance_pool = self._check_if_alliance_pool()
         self.alliance_fee_config = self._get_alliance_fee_config() if self.is_alliance_pool else None
         self.is_alliance_non_core_pool = self._is_alliance_non_core_pool()
+        
+        self.is_partner_pool = self._check_if_partner_pool()
+        self.partner_info = self._get_partner_info() if self.is_partner_pool else None
 
+        self.voting_pool_override = self._get_voting_pool_override()
+        self.market_override = self._get_market_override()
+        self.bribe_platform = self._get_bribe_platform()
+        
         self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
         self.total_to_incentives_usd = self._total_to_incentives_usd()
@@ -98,9 +104,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.to_partner_usd = self._to_partner_usd()
         self.to_beets_usd = self._to_beets_usd()
         self.redirected_incentives_usd = Decimal(0)
-
-        override_cls = overrides.get(self.pool_id)
-        self.override = override_cls(self) if override_cls else None
 
     def _check_if_alliance_pool(self) -> bool:
         in_config = self.chain.chains.alliance_config.get_pool_fee_config(self.pool_id, self.chain.name, True) is not None
@@ -122,6 +125,28 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
                 if pool.pool_id == self.pool_id and pool.network == self.chain.name and pool.active:
                     return pool.pool_type != "core"
         return False
+    
+    def _check_if_partner_pool(self) -> bool:
+        return self.chain.chains.alliance_config.get_partner_pool_config(self.pool_id, self.chain.name) is not None
+    
+    @property
+    def is_alliance_core_pool(self) -> bool:
+        """Returns True if this is an Alliance pool with core type (not non-core)"""
+        return self.is_alliance_pool and not self.is_alliance_non_core_pool
+    
+    def _get_partner_info(self):
+        return self.chain.chains.alliance_config.get_partner_pool_config(self.pool_id, self.chain.name)
+    
+    def _get_voting_pool_override(self):
+        pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
+        return pool_override.voting_pool_override if pool_override else None
+    
+    def _get_market_override(self) -> str:
+        pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
+        return pool_override.market_override if pool_override else "hh"
+    
+    def _get_bribe_platform(self) -> str:
+        return "paladin" if self.market_override == "paladin" else "hiddenhand"
 
     def _earned_fee_share_of_chain_usd(self) -> Decimal:
         if self.chain.total_earned_fees_usd_twap == 0:
@@ -136,56 +161,100 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
     def _total_to_incentives_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        vote_incentive_pct = (
-            self.chain.chains.alliance_config.alliance_fee_allocations["core"].vote_incentive_pct 
-            if self.is_alliance_pool
-            else self.chain.chains.fee_config.vote_incentive_pct
-        )
+
+        if self.is_alliance_pool:
+            vote_incentive_pct = self.chain.chains.alliance_config.alliance_fee_allocations["core"].vote_incentive_pct
+        elif self.is_partner_pool and self.partner_info:
+            _, fee_config = self.partner_info
+            vote_incentive_pct = fee_config.vote_incentive_pct
+        else:
+            vote_incentive_pct = self.chain.chains.fee_config.vote_incentive_pct
+            
         to_distribute_to_incentives = core_fees * vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
 
-    def _to_aura_incentives_usd(self) -> Decimal:
-        if self.is_alliance_non_core_pool:
+    def _calculate_incentive_split(self, platform: str) -> Decimal:
+        # Alliance core pools get 100% to AURA
+        if self.is_alliance_core_pool:
+            return self.total_to_incentives_usd if platform == "aura" else Decimal(0)
+        
+        if self.voting_pool_override == platform:
             return self.total_to_incentives_usd
-        return self.total_to_incentives_usd * self.chain.chains.aura_vebal_share
+        elif self.voting_pool_override and self.voting_pool_override != platform:
+            return Decimal(0)
+        
+        # Default split based on aura vebal share
+        aura_share = self.chain.chains.aura_vebal_share
+        return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
+
+    def _to_aura_incentives_usd(self) -> Decimal:
+        return self._calculate_incentive_split("aura")
 
     def _to_bal_incentives_usd(self) -> Decimal:
-        if self.is_alliance_non_core_pool:
-            return Decimal(0)
-        return self.total_to_incentives_usd * (1 - self.chain.chains.aura_vebal_share)
+        return self._calculate_incentive_split("bal")
 
     def _to_dao_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
-        dao_share_pct = (
-            self.alliance_fee_config.dao_share_pct 
-            if (self.is_alliance_non_core_pool or self.is_alliance_pool)
-            else self.chain.chains.fee_config.dao_share_pct
-        )
-        return self.earned_fee_share_of_chain_usd * core_fees * dao_share_pct * (1 - beets_share_pct)
+        beets_factor = self.chain.get_beets_factor()
+        
+        if self.is_alliance_non_core_pool or self.is_alliance_pool:
+            dao_share_pct = self.alliance_fee_config.dao_share_pct
+        elif self.is_partner_pool and self.partner_info:
+            _, fee_config = self.partner_info
+            dao_share_pct = fee_config.dao_share_pct
+        else:
+            dao_share_pct = self.chain.chains.fee_config.dao_share_pct
+            
+        return self.earned_fee_share_of_chain_usd * core_fees * dao_share_pct * (1 - beets_factor)
 
     def _to_vebal_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
-        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
-        vebal_share_pct = (
-            self.alliance_fee_config.vebal_share_pct 
-            if (self.is_alliance_non_core_pool or self.is_alliance_pool)
-            else self.chain.chains.fee_config.vebal_share_pct
-        )
-        return self.earned_fee_share_of_chain_usd * core_fees * vebal_share_pct * (1 - beets_share_pct)
+        beets_factor = self.chain.get_beets_factor()
+        
+        if self.is_alliance_non_core_pool or self.is_alliance_pool:
+            vebal_share_pct = self.alliance_fee_config.vebal_share_pct
+        elif self.is_partner_pool and self.partner_info:
+            _, fee_config = self.partner_info
+            vebal_share_pct = fee_config.vebal_share_pct
+        else:
+            vebal_share_pct = self.chain.chains.fee_config.vebal_share_pct
+            
+        return self.earned_fee_share_of_chain_usd * core_fees * vebal_share_pct * (1 - beets_factor)
 
     def _to_partner_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
+        
         if self.is_alliance_pool:
             return (
                 self.earned_fee_share_of_chain_usd
                 * core_fees
                 * self.alliance_fee_config.partner_share_pct
             )
+        elif self.is_partner_pool and self.partner_info:
+            _, fee_config = self.partner_info
+            return (
+                self.earned_fee_share_of_chain_usd
+                * core_fees
+                * fee_config.partner_share_pct
+            )
         return Decimal(0)
         
     def _to_beets_usd(self) -> Decimal:
-        beets_share_pct = self.chain.chains.fee_config.beets_share_pct if self.chain.name == "optimism" else 0
-        if beets_share_pct == 0:
+        beets_factor = self.chain.get_beets_factor()
+        if beets_factor == 0:
             return Decimal(0)
-        return (self.to_dao_usd + self.to_vebal_usd)
+        # Beets receives the portion that was deducted from DAO and veBAL
+        core_fees = self._core_pool_allocation()
+        
+        if self.is_alliance_non_core_pool or self.is_alliance_pool:
+            dao_share_pct = self.alliance_fee_config.dao_share_pct
+            vebal_share_pct = self.alliance_fee_config.vebal_share_pct
+        elif self.is_partner_pool and self.partner_info:
+            _, fee_config = self.partner_info
+            dao_share_pct = fee_config.dao_share_pct
+            vebal_share_pct = fee_config.vebal_share_pct
+        else:
+            dao_share_pct = self.chain.chains.fee_config.dao_share_pct
+            vebal_share_pct = self.chain.chains.fee_config.vebal_share_pct
+            
+        return self.earned_fee_share_of_chain_usd * core_fees * (dao_share_pct + vebal_share_pct) * beets_factor

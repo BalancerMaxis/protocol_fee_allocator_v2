@@ -3,6 +3,7 @@ from pathlib import Path
 from decimal import Decimal
 from typing import Dict, List, Any
 from collections import defaultdict
+import requests
 
 from rich.console import Console
 from rich.table import Table
@@ -10,6 +11,7 @@ from rich.panel import Panel
 from rich import box
 
 from bal_addresses import AddrBook
+from fee_allocator.constants import ALLIANCE_CONFIG_URL
 
 
 class PayloadVisualizer:
@@ -29,12 +31,25 @@ class PayloadVisualizer:
             self.book.get("tokens/USDC", "").lower(): "USDC",
             self.book.get("tokens/BAL", "").lower(): "BAL",
         }
+        
+        # Load alliance config to identify alliance multisig addresses
+        self.alliance_addresses = {}
+        try:
+            alliance_config = requests.get(ALLIANCE_CONFIG_URL).json()
+            for member in alliance_config.get("alliance_members", []):
+                if member.get("multisig_address"):
+                    self.alliance_addresses[member["multisig_address"].lower()] = member["name"]
+        except Exception as e:
+            print(f"Warning: Could not load alliance config: {e}")
+            self.alliance_addresses = {}
     
     def format_address(self, address: str) -> str:
         """Format address with known name if available"""
         addr_lower = address.lower()
         if addr_lower in self.known_addresses:
             return f"{self.known_addresses[addr_lower]} ({address[:6]}...{address[-4:]})"
+        elif addr_lower in self.alliance_addresses:
+            return f"{self.alliance_addresses[addr_lower]} (Alliance) ({address[:6]}...{address[-4:]})"
         return f"{address[:6]}...{address[-4:]}"
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
@@ -123,6 +138,13 @@ class PayloadVisualizer:
                     groups["Balancer Bribes"].append(tx)
                 else:
                     groups["Other Bribes"].append(tx)
+            elif method in ["createRangedQuest", "createFixedQuest"]:
+                if to_addr == "0x8b2ba835056965808ad88e7ad7866bd57ae75839":  # veBAL Quest Board
+                    groups["Balancer Bribes"].append(tx)
+                elif to_addr == "0x653d8f14292a1c5239d6183b333de1f2e8669310":  # vlAURA Quest Board
+                    groups["Aura Bribes"].append(tx)
+                else:
+                    groups["Other Bribes"].append(tx)
             elif method == "transfer":
                 recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
                 if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
@@ -131,8 +153,11 @@ class PayloadVisualizer:
                     groups["DAO Transfers"].append(tx)
                 elif recipient == self.book.get("multisigs/beets_treasury").lower():
                     groups["Beets Transfers"].append(tx)
+                elif recipient in self.alliance_addresses:
+                    # This is an alliance transfer
+                    groups["Alliance Transfers"].append(tx)
                 else:
-                    # Check if it's a partner transfer
+                    # This is a partner transfer (not alliance)
                     groups["Partner Transfers"].append(tx)
             else:
                 groups["Other Transactions"].append(tx)
@@ -149,19 +174,32 @@ class PayloadVisualizer:
             "vebal_usdc": Decimal(0),
             "vebal_bal": Decimal(0),
             "partner_usdc": Decimal(0),
+            "alliance_usdc": Decimal(0),
             "beets_usdc": Decimal(0),
         }
         
         for group_name, txs in groups.items():
             for tx in txs:
                 if "Bribe" in group_name:
-                    if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
-                        amount = Decimal(tx["contractInputsValues"]["_amount"])
-                        totals["bribes_usdc"] += amount
-                        if group_name == "Aura Bribes":
-                            totals["aura_bribes_usdc"] += amount
-                        elif group_name == "Balancer Bribes":
-                            totals["bal_bribes_usdc"] += amount
+                    method = tx.get("contractMethod", {}).get("name", "")
+                    if method in ["createRangedQuest", "createFixedQuest"]:
+                        # Paladin Quest - use totalRewardAmount
+                        if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Aura Bribes":
+                                totals["aura_bribes_usdc"] += amount
+                            elif group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
+                    else:
+                        # HiddenHand bribe - use _amount
+                        if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(tx["contractInputsValues"]["_amount"])
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Aura Bribes":
+                                totals["aura_bribes_usdc"] += amount
+                            elif group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
                 elif group_name == "veBAL Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["vebal_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
@@ -174,8 +212,11 @@ class PayloadVisualizer:
                 elif group_name == "Partner Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["partner_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
+                elif group_name == "Alliance Transfers":
+                    if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
+                        totals["alliance_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
 
-        totals["total_usdc"] = totals["bribes_usdc"] + totals["dao_usdc"] + totals["vebal_usdc"] + totals["partner_usdc"] + totals["beets_usdc"]
+        totals["total_usdc"] = totals["bribes_usdc"] + totals["dao_usdc"] + totals["vebal_usdc"] + totals["partner_usdc"] + totals["alliance_usdc"] + totals["beets_usdc"]
         return totals
     
     def extract_transaction_data(self, group_name: str, tx: Dict) -> Dict[str, str]:
@@ -183,11 +224,19 @@ class PayloadVisualizer:
         data = {}
         
         if "Bribe" in group_name:
-            data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
-            data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
-            data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
+            method = tx.get("contractMethod", {}).get("name", "")
+            if method in ["createRangedQuest", "createFixedQuest"]:
+                # Paladin Quest transaction
+                data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("gauge", ""))
+                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
+            else:
+                # HiddenHand bribe
+                data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
+                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
             token_addr = tx.get("to", "")
@@ -213,7 +262,7 @@ class PayloadVisualizer:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
             return ["Gauge/Proposal", "Amount", "Token"]
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Beets Transfers"]:
+        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
             return ["Token", "Spender", "Amount"]
@@ -238,6 +287,7 @@ class PayloadVisualizer:
             metrics['dao_pct'] = (totals['dao_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             metrics['vebal_pct'] = (totals['vebal_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             metrics['partner_pct'] = (totals['partner_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
+            metrics['alliance_pct'] = (totals['alliance_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             metrics['beets_pct'] = (totals['beets_usdc'] / totals['total_usdc'] * 100).quantize(Decimal('0.01'))
             
             # Calculate core pool fees
@@ -298,12 +348,14 @@ class PayloadVisualizer:
             md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))} ({metrics['dao_pct']}% of distributed)")
             md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))} ({metrics['vebal_pct']}% of distributed)")
             md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))} ({metrics['partner_pct']}% of distributed)")
+            md.append(f"- **Alliance Fees:** {self.format_amount(str(totals['alliance_usdc']))} ({metrics['alliance_pct']}% of distributed)")
             md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))} ({metrics['beets_pct']}% of distributed)")
         else:
             md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
             md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
             md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
             md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
+            md.append(f"- **Alliance Fees:** {self.format_amount(str(totals['alliance_usdc']))}")
             md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))}")
         md.append("")
         
@@ -389,6 +441,7 @@ class PayloadVisualizer:
             "veBAL Transfers",
             "DAO Transfers",
             "Beets Transfers",
+            "Alliance Transfers",
             "Partner Transfers",
             "Token Approvals",
             "Other Bribes",
@@ -431,12 +484,14 @@ class PayloadVisualizer:
             lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue] [dim]({metrics['dao_pct']}% of total)[/dim]")
             lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta] [dim]({metrics['vebal_pct']}% of total)[/dim]")
             lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan] [dim]({metrics['beets_pct']}% of total)[/dim]")
+            lines.append(f"• Alliance Fees: [bright_yellow]{self.format_amount(str(totals['alliance_usdc']))}[/bright_yellow] [dim]({metrics['alliance_pct']}% of total)[/dim]")
             lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow] [dim]({metrics['partner_pct']}% of total)[/dim]")
         else:
             lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]")
             lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]")
             lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]")
             lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan]")
+            lines.append(f"• Alliance Fees: [bright_yellow]{self.format_amount(str(totals['alliance_usdc']))}[/bright_yellow]")
             lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]")
         
         # Add Allocation Validation section (matching markdown version)
@@ -476,6 +531,7 @@ class PayloadVisualizer:
             "veBAL Transfers": "magenta",
             "DAO Transfers": "green",
             "Beets Transfers": "cyan",
+            "Alliance Transfers": "bright_yellow",
             "Partner Transfers": "yellow",
             "Token Approvals": "dim",
         }
@@ -562,6 +618,7 @@ class PayloadVisualizer:
             "veBAL Transfers",
             "DAO Transfers",
             "Beets Transfers",
+            "Alliance Transfers",
             "Partner Transfers",
             "Token Approvals",
             "Other Bribes",

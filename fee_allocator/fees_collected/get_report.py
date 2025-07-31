@@ -22,19 +22,36 @@ def get_report(start_date, end_date, env_id):
         },
     )
     response.raise_for_status()
-    # breakpoint()
-    report = response.json()["depositors"]
+    data = response.json()
     
-    cleaned_report = {
-        chain.replace("-v3", "") if chain.endswith("-v3") else chain: int(amount)
-        for chain, amount in report.items()
+    usdc = data["withdraws"]["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+    total_net = int(usdc["net"])
+    total_gross_usdc = int(usdc["total"])
+    
+    depositors = {k.replace("-v3", ""): int(v) for k, v in data["depositors"].items()}
+    total_gross = sum(depositors.values())
+    
+    if total_gross != total_gross_usdc:
+        raise ValueError(f"Depositors sum {total_gross} doesn't match USDC total {total_gross_usdc}")
+    
+    # calc each chain's share of net amount based on its proportion of gross fees
+    report = {
+        chain: int(total_net * amount / total_gross)
+        for chain, amount in depositors.items()
     }
+
+    # Adjust rounding difference on the largest chain
+    rounding_diff = total_net - sum(report.values())
+    if rounding_diff:
+        largest_chain = max(report, key=report.get)
+        report[largest_chain] += rounding_diff
     
-    total = sum(cleaned_report.values())
-    if total > 0:
-        return cleaned_report
-    else:
-        raise ValueError("Sum of collected fees is not > 0")
+    if sum(report.values()) != total_net:
+        raise ValueError(f"Total mismatch: {sum(report.values())} != {total_net}")
+    
+    if total_net <= 0:
+        raise ValueError("No fees collected")
+    return report
 
 
 if __name__ == "__main__":
