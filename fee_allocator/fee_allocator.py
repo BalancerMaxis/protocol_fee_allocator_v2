@@ -52,6 +52,8 @@ class FeeAllocator:
     ):
         self.input_fees = input_fees
         self.date_range = date_range
+        self.start_date = datetime.datetime.fromtimestamp(date_range[0]).date()
+        self.end_date = datetime.datetime.fromtimestamp(date_range[1]).date()
         self.run_config = CorePoolRunConfig(
             input_fees,
             date_range,
@@ -121,6 +123,8 @@ class FeeAllocator:
         Generates all fee allocation artifacts (CSVs and payload).
         """
         logger.info("generating fee allocation artifacts")
+        
+        self._check_and_update_paladin_platforms()
         
         # Generate CSVs
         incentives_path = self.generate_incentives_csv()
@@ -357,10 +361,8 @@ class FeeAllocator:
         df = pd.DataFrame(output)
         
         sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
-        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
-        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
         output_path = (
-            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{start_date}_{end_date}.csv"
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{self.start_date}_{self.end_date}.csv"
         )
         output_path.parent.mkdir(exist_ok=True)
 
@@ -393,10 +395,8 @@ class FeeAllocator:
             })
 
         df = pd.DataFrame(output)
-        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
-        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
         output_path = (
-            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_noncore_{start_date}_{end_date}.csv"
+            PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_noncore_{self.start_date}_{self.end_date}.csv"
         )
         output_path.parent.mkdir(exist_ok=True)
         
@@ -441,9 +441,7 @@ class FeeAllocator:
                 })
 
         df = pd.DataFrame(output)
-        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
-        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
-        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_alliance_{start_date}_{end_date}.csv"
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_alliance_{self.start_date}_{self.end_date}.csv"
         output_path.parent.mkdir(exist_ok=True)
         df.to_csv(output_path, index=False)
         return output_path
@@ -486,9 +484,7 @@ class FeeAllocator:
                             })
 
         df = pd.DataFrame(output)
-        start_date = datetime.datetime.fromtimestamp(self.date_range[0]).date()
-        end_date = datetime.datetime.fromtimestamp(self.date_range[1]).date()
-        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_partner_{start_date}_{end_date}.csv"
+        output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_partner_{self.start_date}_{self.end_date}.csv"
         output_path.parent.mkdir(exist_ok=True)
         df.to_csv(output_path, index=False)
         return output_path
@@ -550,7 +546,6 @@ class FeeAllocator:
         if total_paladin_bribe_usdc > 0:
             self._process_paladin_quests(
                 paladin_bribe_df,
-                total_paladin_bribe_usdc,
                 usdc
             )
 
@@ -609,6 +604,80 @@ class FeeAllocator:
         
         return output_path
     
+    def _check_and_update_paladin_platforms(self):
+        """Check Paladin gauges and fallback to HiddenHand if requirements not met."""
+        PALADIN_QUEST_BOARDS = {
+            "balancer": "0x8b2ba835056965808aD88e7Ad7866BD57aE75839",
+            "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
+        }
+        
+        with open(f"{base_dir}/abi/gauge.json", "r") as f:
+            gauge_abi = json.load(f)
+        
+        w3 = self.run_config.mainnet.web3
+        usdc = Web3.to_checksum_address(self.book["tokens/USDC"])
+        gauges_with_issues = []
+        
+        for chain in self.run_config.all_chains:
+            for pool in chain.core_pools:
+                if pool.bribe_platform != "paladin":
+                    continue
+                    
+                gauge = Web3.to_checksum_address(pool.gauge_address)
+                contract = w3.eth.contract(address=gauge, abi=gauge_abi)
+                
+                has_issue = False
+                action_needed = []
+                
+                try:
+                    usdc_found = usdc in [contract.functions.reward_tokens(i).call() for i in range(8)]
+
+                    has_correct_distributor = False
+                    if usdc_found:
+                        distributor = contract.functions.reward_data(usdc).call()[1]
+                        has_correct_distributor = (
+                            distributor.lower() == PALADIN_QUEST_BOARDS["balancer"].lower() or
+                            distributor.lower() == PALADIN_QUEST_BOARDS["aura"].lower()
+                        )
+                    
+                    if not usdc_found or not has_correct_distributor:
+                        has_issue = True
+                        
+                        # Build list of distributors needed based on where incentives go
+                        distributors_needed = []
+                        if pool.to_bal_incentives_usd > 0:
+                            distributors_needed.append(f"Balancer distributor ({PALADIN_QUEST_BOARDS['balancer']})")
+                        if pool.to_aura_incentives_usd > 0:
+                            distributors_needed.append(f"Aura distributor ({PALADIN_QUEST_BOARDS['aura']})")
+                        
+                        if distributors_needed:
+                            if not usdc_found:
+                                action_needed.append(f"Add USDC ({usdc}) as reward token and set {' and '.join(distributors_needed)}")
+                            else:
+                                action_needed.append(f"Set {' and '.join(distributors_needed)}")
+                                
+                except Exception:
+                    has_issue = True
+                    action_needed.append("Gauge has incompatible implementation")
+
+                if has_issue:
+                    # Fallback to HiddenHand
+                    pool.bribe_platform = "hiddenhand"
+                    logger.warning(f"Paladin gauge {pool.gauge_address} falling back to HiddenHand")
+                    gauges_with_issues.append({
+                        "gauge": pool.gauge_address,
+                        "pool_id": pool.pool_id,
+                        "chain": chain.name,
+                        "action": ". ".join(action_needed),
+                        "amount": float(pool.total_to_incentives_usd)
+                    })
+
+        if gauges_with_issues:
+            issues_file = base_dir / "allocations" / f"paladin_gauge_status_{self.start_date}_{self.end_date}.json"
+            with open(issues_file, "w") as f:
+                json.dump(gauges_with_issues, f, indent=2)
+    
+    
     def _process_hiddenhand_bribes(self, bribe_df, total_bribe_usdc, usdc, bal_bribe_market, aura_bribe_market):
         usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1)  # 1 wei buffer
         
@@ -624,83 +693,63 @@ class FeeAllocator:
             elif row["platform"] == "aura":
                 aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
     
-    def _process_paladin_quests(self, bribe_df, total_bribe_usdc, usdc):
+    def _process_paladin_quests(self, bribe_df, usdc):
         PALADIN_QUEST_BOARDS = {
-            "balancer": "0x8b2ba835056965808aD88e7Ad7866BD57aE75839",
-            "aura": "0x653D8f14292A1C5239d6183b333De1F2e8669310"
+            "balancer": "0xfEb352930cA196a80B708CDD5dcb4eCA94805daB",
+            "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
         }
         
-        bal_bribes = bribe_df[bribe_df["platform"] == "balancer"]
-        aura_bribes = bribe_df[bribe_df["platform"] == "aura"]
-        
-        quest_boards = {}
-        platform_fee_ratios = {}
+        valid_bribes = bribe_df[bribe_df["amount"] > 0]
         
         with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
             paladin_abi = json.load(f)
         
-        if not bal_bribes.empty:
-            quest_boards["balancer"] = SafeContract(
-                PALADIN_QUEST_BOARDS["balancer"],
-                abi=paladin_abi
-            )
-            w3_contract = self.run_config.mainnet.web3.eth.contract(
-                address=PALADIN_QUEST_BOARDS["balancer"],
-                abi=paladin_abi
-            )
-            try:
-                platform_fee_ratios["balancer"] = w3_contract.functions.platformFeeRatio().call()
-            except Exception as e:
-                print(f"Failed to fetch platform fee ratio: {e}. Using default 4%")
-                platform_fee_ratios["balancer"] = 400  # 4% in basis points
-            
-            bal_total = sum(round(row["amount"] * 1e6) for _, row in bal_bribes.iterrows())
-            bal_total_with_fee = int(bal_total * (1 + platform_fee_ratios["balancer"] / 10000))
-            usdc.approve(PALADIN_QUEST_BOARDS["balancer"], bal_total_with_fee)
-            
-        if not aura_bribes.empty:
-            quest_boards["aura"] = SafeContract(
-                PALADIN_QUEST_BOARDS["aura"],
-                abi=paladin_abi
-            )
-            w3_contract = self.run_config.mainnet.web3.eth.contract(
-                address=PALADIN_QUEST_BOARDS["aura"],
-                abi=paladin_abi
-            )
-            try:
-                platform_fee_ratios["aura"] = w3_contract.functions.platformFeeRatio().call()
-            except Exception as e:
-                print(f"Failed to fetch platform fee ratio: {e}. Using default 4%")
-                platform_fee_ratios["aura"] = 400  # 4% in basis points
-            
-            aura_total = sum(round(row["amount"] * 1e6) for _, row in aura_bribes.iterrows())
-            aura_total_with_fee = int(aura_total * (1 + platform_fee_ratios["aura"] / 10000))
-            usdc.approve(PALADIN_QUEST_BOARDS["aura"], aura_total_with_fee)
+        quest_boards = {}
+        platform_fee_ratios = {}
         
-        for _, row in bribe_df.iterrows():
-            if int(row["amount"]) == 0:
+        for platform in ["balancer", "aura"]:
+            bribes = valid_bribes[valid_bribes["platform"] == platform]
+            if bribes.empty:
                 continue
                 
+            quest_board_addr = PALADIN_QUEST_BOARDS[platform]
+            quest_boards[platform] = SafeContract(quest_board_addr, abi=paladin_abi)
+            
+            w3_contract = self.run_config.mainnet.web3.eth.contract(
+                address=quest_board_addr,
+                abi=paladin_abi
+            )
+            try:
+                platform_fee_ratios[platform] = w3_contract.functions.platformFeeRatio().call()
+            except Exception:
+                platform_fee_ratios[platform] = 400  # 4% default
+            
+            total = sum(round(row["amount"] * 1e6) for _, row in bribes.iterrows())
+            usdc.approve(quest_board_addr, total)
+        
+        for _, row in valid_bribes.iterrows():
             mantissa = round(row["amount"] * 1e6)
             platform = row["platform"]
             quest_board = quest_boards[platform]
             fee_ratio = platform_fee_ratios[platform]
-
+            
+            total_reward_amount = int(mantissa * 10000 / (10000 + fee_ratio))
+            fee_amount = mantissa - total_reward_amount
+            
             quest_board.createRangedQuest(
-                row["target"],              # gauge
-                self.book["tokens/USDC"],   # rewardToken
-                True,                       # startNextPeriod
-                2,                          # duration
-                1,                          # minRewardPerVote (1 wei minimum)
-                mantissa,                   # maxRewardPerVote (full amount maximum)
-                mantissa,                   # totalRewardAmount
-                int(mantissa * fee_ratio / 10000), # feeAmount (convert from BPS)
-                0,                          # voteType (0 = NORMAL)
-                0,                          # closeType (0 = NORMAL)
-                []                          # voterList (no restrictions)
+                row["target"],               # gauge
+                self.book["tokens/USDC"],    # rewardToken
+                True,                        # startNextPeriod
+                2,                           # duration (2 weeks)
+                1,                           # minRewardPerVote 
+                total_reward_amount,         # maxRewardPerVote
+                total_reward_amount,         # totalRewardAmount
+                fee_amount,                  # feeAmount
+                0,                           # voteType (NORMAL)
+                0,                           # closeType (NORMAL)
+                []                           # voterList
             )
 
-        logger.info(f"Paladin Quest creation: {len(bribe_df)} quests totaling ${total_bribe_usdc/1e6}")
 
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:

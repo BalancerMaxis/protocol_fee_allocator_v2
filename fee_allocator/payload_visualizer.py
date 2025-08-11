@@ -139,9 +139,9 @@ class PayloadVisualizer:
                 else:
                     groups["Other Bribes"].append(tx)
             elif method in ["createRangedQuest", "createFixedQuest"]:
-                if to_addr == "0x8b2ba835056965808ad88e7ad7866bd57ae75839":  # veBAL Quest Board
+                if to_addr in ["0x8b2ba835056965808ad88e7ad7866bd57ae75839", "0xfeb352930ca196a80b708cdd5dcb4eca94805dab"]:  # veBAL Quest Boards (v2 and v3)
                     groups["Balancer Bribes"].append(tx)
-                elif to_addr == "0x653d8f14292a1c5239d6183b333de1f2e8669310":  # vlAURA Quest Board
+                elif to_addr in ["0x653d8f14292a1c5239d6183b333de1f2e8669310"]:  # vlAURA Quest Board
                     groups["Aura Bribes"].append(tx)
                 else:
                     groups["Other Bribes"].append(tx)
@@ -183,16 +183,17 @@ class PayloadVisualizer:
                 if "Bribe" in group_name:
                     method = tx.get("contractMethod", {}).get("name", "")
                     if method in ["createRangedQuest", "createFixedQuest"]:
-                        # Paladin Quest - use totalRewardAmount
                         if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
-                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            # For Paladin, include both totalRewardAmount and feeAmount
+                            total_reward = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            fee_amount = Decimal(tx["contractInputsValues"].get("feeAmount", "0"))
+                            amount = total_reward + fee_amount
                             totals["bribes_usdc"] += amount
                             if group_name == "Aura Bribes":
                                 totals["aura_bribes_usdc"] += amount
                             elif group_name == "Balancer Bribes":
                                 totals["bal_bribes_usdc"] += amount
                     else:
-                        # HiddenHand bribe - use _amount
                         if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
                             amount = Decimal(tx["contractInputsValues"]["_amount"])
                             totals["bribes_usdc"] += amount
@@ -226,15 +227,20 @@ class PayloadVisualizer:
         if "Bribe" in group_name:
             method = tx.get("contractMethod", {}).get("name", "")
             if method in ["createRangedQuest", "createFixedQuest"]:
-                # Paladin Quest transaction
-                data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("gauge", ""))
-                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                gauge = tx.get("contractInputsValues", {}).get("gauge", "")
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
+                # For Paladin, add totalRewardAmount + feeAmount to show full allocated amount
+                total_reward = int(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                fee_amount = int(tx.get("contractInputsValues", {}).get("feeAmount", "0"))
+                data["col2"] = self.format_amount(str(total_reward + fee_amount))
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
+                data["col4"] = "Paladin"
             else:
-                # HiddenHand bribe
-                data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
+                proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
+                data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
                 data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
+                data["col4"] = "HiddenHand"
         
         elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
@@ -261,7 +267,7 @@ class PayloadVisualizer:
     def get_table_headers(self, group_name: str) -> List[str]:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
-            return ["Gauge/Proposal", "Amount", "Token"]
+            return ["Gauge/Proposal", "Amount", "Token", "Market"]
         elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
@@ -392,7 +398,10 @@ class PayloadVisualizer:
         
         for tx in transactions:
             data = self.extract_transaction_data(group_name, tx)
-            md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} |")
+            if len(headers) == 4:
+                md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} | {data.get('col4', '')} |")
+            else:
+                md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} |")
         
         return "\n".join(md)
     
@@ -546,10 +555,13 @@ class PayloadVisualizer:
             border_style=style
         )
         
-        # Add columns based on group
         headers = self.get_table_headers(group_name)
-        styles = ["dim", "bold", "dim"] if "Approval" not in group_name else ["dim", "dim", "dim"]
-        justifies = ["left", "right", "left"]
+        if len(headers) == 4:
+            styles = ["dim", "bold", "dim", "dim"]
+            justifies = ["left", "right", "left", "left"]
+        else:
+            styles = ["dim", "bold", "dim"] if "Approval" not in group_name else ["dim", "dim", "dim"]
+            justifies = ["left", "right", "left"]
         
         for header, style_col, justify in zip(headers, styles, justifies):
             table.add_column(header, style=style_col, justify=justify)
@@ -557,7 +569,10 @@ class PayloadVisualizer:
         # Add rows
         for tx in transactions:
             data = self.extract_transaction_data(group_name, tx)
-            table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''))
+            if len(headers) == 4:
+                table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''), data.get('col4', ''))
+            else:
+                table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''))
         
         return table
     
