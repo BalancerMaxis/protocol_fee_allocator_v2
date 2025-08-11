@@ -182,14 +182,15 @@ class PayloadVisualizer:
         )
         
         table.add_column("Gauge", style="dim")
+        table.add_column("Pool ID", style="dim")
         table.add_column("Chain", style="dim")
         table.add_column("Amount", style="bold", justify="right")
         table.add_column("Action Required", style="yellow")
         
         for issue in gauge_issues:
-            gauge = issue.get("gauge", "")
             table.add_row(
-                f"{gauge[:10]}..." if len(gauge) > 10 else gauge,
+                issue.get("gauge", ""),
+                issue.get("pool_id", ""),
                 issue.get("chain", ""),
                 f"${issue.get('amount', 0):,.2f}",
                 issue.get("action", "")
@@ -450,12 +451,10 @@ class PayloadVisualizer:
         gauge_issues = self.load_gauge_issues(gauge_issues_path)
         if gauge_issues:
             md.append("\n## ⚠️ Gauge Configuration Required\n")
-            md.append("| Gauge | Chain | Amount | Action Required |")
-            md.append("|-------|-------|--------|-----------------|")
+            md.append("| Gauge | Pool ID | Chain | Amount | Action Required |")
+            md.append("|-------|---------|-------|--------|-----------------|")
             for issue in gauge_issues:
-                gauge = issue.get("gauge", "")
-                gauge_display = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
-                md.append(f"| {gauge_display} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
+                md.append(f"| {issue.get('gauge', '')} | {issue.get('pool_id', '')} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
         
         # Add transaction tables in priority order
         priority_order = [
