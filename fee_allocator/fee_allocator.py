@@ -521,6 +521,13 @@ class FeeAllocator:
         )
 
         df = pd.read_csv(input_csv)
+        
+        logger.info(f"Bribe CSV column types after reading: {df.dtypes.to_dict()}")
+        if 'target' in df.columns:
+            for idx, row in df.iterrows():
+                if not isinstance(row['target'], str):
+                    logger.warning(f"Row {idx} has non-string target: value={row['target']}, type={type(row['target'])}")
+        
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
         beets_df = df[df["platform"] == "beets"].iloc[0]
@@ -751,8 +758,15 @@ class FeeAllocator:
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:
         if platform == "balancer":
-            prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
-            return f"0x{prop.hex().replace('0x', '')}"
+            try:
+                prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
+                return f"0x{prop.hex().replace('0x', '')}"
+            except Exception as e:
+                logger.error(f"Error in _get_prop_hash for Balancer platform:")
+                logger.error(f"  target value: {target}")
+                logger.error(f"  target type: {type(target)}")
+                logger.error(f"  target repr: {repr(target)}")
+                raise e
         if platform == "aura":
             return get_hh_aura_target(target)
         raise ValueError(f"platform {platform} not supported")
