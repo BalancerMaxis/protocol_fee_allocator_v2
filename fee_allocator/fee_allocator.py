@@ -313,7 +313,7 @@ class FeeAllocator:
         )
         output.append(
             {
-                "target": self.book.get("multisigs/beets_treasury", "0xea06E3E20658d2E27DCd1a6d5248Fd3667e66E26"),  # Beets treasury
+                "target": self.book["multisigs/beets_treasury"],
                 "platform": "beets",
                 "amount": self.run_config.total_to_beets_usd + noncore_total_to_beets_usd,
             }
@@ -611,7 +611,7 @@ class FeeAllocator:
     def _check_paladin_gauge_requirements(self):
         """Check Paladin gauges for requirements and log issues"""
         PALADIN_QUEST_BOARDS = {
-            "balancer": "0x8b2ba835056965808aD88e7Ad7866BD57aE75839",
+            "balancer": "0xfEb352930cA196a80B708CDD5dcb4eCA94805daB",
             "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
         }
         
@@ -674,7 +674,7 @@ class FeeAllocator:
                     })
 
         if gauges_with_issues:
-            issues_file = base_dir / "allocations" / f"paladin_gauge_status_{self.start_date}_{self.end_date}.json"
+            issues_file = base_dir / "allocations" / f"{self.run_config.protocol_version}_paladin_gauge_status_{self.start_date}_{self.end_date}.json"
             with open(issues_file, "w") as f:
                 json.dump(gauges_with_issues, f, indent=2)
     
@@ -861,7 +861,6 @@ class FeeAllocator:
         """
         Generate a markdown report for the payload.
         """
-        # For protocol-specific reports, we want to preserve the protocol version in the filename
         payload_name = payload_path.stem
         if payload_name.startswith(("v2_", "v3_")):
             date_str = payload_name[3:]
@@ -876,4 +875,8 @@ class FeeAllocator:
         reports_dir = Path(PROJECT_ROOT) / "fee_allocator" / "reports"
         report_path = reports_dir / report_name
         
-        return save_markdown_report(payload_path, fee_files, output_path=report_path)
+        gauge_issues_path = Path(PROJECT_ROOT) / f"fee_allocator/allocations/{self.run_config.protocol_version}_paladin_gauge_status_{self.start_date}_{self.end_date}.json"
+        if not gauge_issues_path.exists():
+            gauge_issues_path = None
+        
+        return save_markdown_report(payload_path, fee_files, output_path=report_path, gauge_issues_path=gauge_issues_path)
