@@ -282,6 +282,9 @@ class FeeAllocator:
                 if int(core_pool.total_to_incentives_usd) == 0:
                     continue
 
+                if not core_pool.gauge_address:
+                    logger.warning(f"Pool {core_pool.pool_id} has no gauge address")
+                
                 output.append(
                     {
                         "target": core_pool.gauge_address,
@@ -310,7 +313,7 @@ class FeeAllocator:
         )
         output.append(
             {
-                "target": self.book["multisigs/beets_treasury"],
+                "target": self.book.get("multisigs/beets_treasury", "0xea06E3E20658d2E27DCd1a6d5248Fd3667e66E26"),  # Beets treasury
                 "platform": "beets",
                 "amount": self.run_config.total_to_beets_usd + noncore_total_to_beets_usd,
             }
@@ -521,12 +524,6 @@ class FeeAllocator:
         )
 
         df = pd.read_csv(input_csv)
-        
-        logger.info(f"Bribe CSV column types after reading: {df.dtypes.to_dict()}")
-        if 'target' in df.columns:
-            for idx, row in df.iterrows():
-                if not isinstance(row['target'], str):
-                    logger.warning(f"Row {idx} has non-string target: value={row['target']}, type={type(row['target'])}")
         
         bribe_df = df[df["platform"].isin(["balancer", "aura"])]
         payment_df = df[df["platform"] == "payment"].iloc[0]
@@ -758,15 +755,8 @@ class FeeAllocator:
     @staticmethod
     def _get_prop_hash(platform: str, target: str) -> str:
         if platform == "balancer":
-            try:
-                prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
-                return f"0x{prop.hex().replace('0x', '')}"
-            except Exception as e:
-                logger.error(f"Error in _get_prop_hash for Balancer platform:")
-                logger.error(f"  target value: {target}")
-                logger.error(f"  target type: {type(target)}")
-                logger.error(f"  target repr: {repr(target)}")
-                raise e
+            prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
+            return f"0x{prop.hex().replace('0x', '')}"
         if platform == "aura":
             return get_hh_aura_target(target)
         raise ValueError(f"platform {platform} not supported")
