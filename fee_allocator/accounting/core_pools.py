@@ -146,7 +146,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return pool_override.market_override if pool_override else "hh"
     
     def _get_bribe_platform(self) -> str:
-        if self.protocol_version == 2 and self.pool_id == "0xf16aee6a71af1a9bc8f56975a4c2705ca7a782bc0002000000000000000004bb": return "paladin"
         return "paladin" if self.market_override == "paladin" else "hiddenhand"
 
     def _earned_fee_share_of_chain_usd(self) -> Decimal:
