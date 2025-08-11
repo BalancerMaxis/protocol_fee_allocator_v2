@@ -124,7 +124,7 @@ class FeeAllocator:
         """
         logger.info("generating fee allocation artifacts")
         
-        self._check_and_update_paladin_platforms()
+        self._check_paladin_gauge_requirements()
         
         # Generate CSVs
         incentives_path = self.generate_incentives_csv()
@@ -604,8 +604,8 @@ class FeeAllocator:
         
         return output_path
     
-    def _check_and_update_paladin_platforms(self):
-        """Check Paladin gauges and fallback to HiddenHand if requirements not met."""
+    def _check_paladin_gauge_requirements(self):
+        """Check Paladin gauges for requirements and log issues"""
         PALADIN_QUEST_BOARDS = {
             "balancer": "0x8b2ba835056965808aD88e7Ad7866BD57aE75839",
             "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
@@ -643,7 +643,6 @@ class FeeAllocator:
                     if not usdc_found or not has_correct_distributor:
                         has_issue = True
                         
-                        # Build list of distributors needed based on where incentives go
                         distributors_needed = []
                         if pool.to_bal_incentives_usd > 0:
                             distributors_needed.append(f"Balancer distributor ({PALADIN_QUEST_BOARDS['balancer']})")
@@ -661,9 +660,7 @@ class FeeAllocator:
                     action_needed.append("Gauge has incompatible implementation")
 
                 if has_issue:
-                    # Fallback to HiddenHand
-                    pool.bribe_platform = "hiddenhand"
-                    logger.warning(f"Paladin gauge {pool.gauge_address} falling back to HiddenHand")
+                    logger.warning(f"Paladin gauge {pool.gauge_address} missing requirements: {'. '.join(action_needed)}")
                     gauges_with_issues.append({
                         "gauge": pool.gauge_address,
                         "pool_id": pool.pool_id,
