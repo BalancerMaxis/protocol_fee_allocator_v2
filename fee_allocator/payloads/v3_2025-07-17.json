@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1752766839,
+  "createdAt": 1754931670,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -14,7 +14,6 @@
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -33,13 +32,12 @@
       },
       "contractInputsValues": {
         "_spender": "0xE00fe722e5bE7ad45b1A16066E431E47Df476CeC",
-        "_value": "26211968601"
+        "_value": "25933536801"
       }
     },
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -74,7 +72,7 @@
       "contractInputsValues": {
         "_proposal": "0xb56fbdce51407eaacd3d604a5bf7e24a002c3d2ff72ea7730f5e20cbe35fd42c",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "837836600",
+        "_amount": "713945600",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -82,7 +80,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -117,7 +114,7 @@
       "contractInputsValues": {
         "_proposal": "0x3958098476d0512b1b4478df8eef76ad2b1c364a72f95993d8d8d5476d9ddfaf",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "891839400",
+        "_amount": "759963100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -125,7 +122,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -160,7 +156,7 @@
       "contractInputsValues": {
         "_proposal": "0x138d1d1faab0e9e2aaf29695e9829f72f64f069e34e77e120ba0143d34ab4795",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "762763600",
+        "_amount": "737139300",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -168,7 +164,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -203,7 +198,7 @@
       "contractInputsValues": {
         "_proposal": "0x596c65223d151ac5e6dff79910a27283061b128b7fb5ded08a99dc3f53ce4e5c",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "263590800",
+        "_amount": "254735700",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -211,7 +206,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -246,7 +240,7 @@
       "contractInputsValues": {
         "_proposal": "0x596c65223d151ac5e6dff79910a27283061b128b7fb5ded08a99dc3f53ce4e5c",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "902500500",
+        "_amount": "872181900",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -254,7 +248,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -289,7 +282,7 @@
       "contractInputsValues": {
         "_proposal": "0xdc4c8613a9c17524273b6224471c350c353cddf2b4684fd21085c83d387393d2",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "136939500",
+        "_amount": "132339200",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -297,7 +290,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -332,7 +324,7 @@
       "contractInputsValues": {
         "_proposal": "0xdc4c8613a9c17524273b6224471c350c353cddf2b4684fd21085c83d387393d2",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1031033200",
+        "_amount": "996396600",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -340,7 +332,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -375,7 +366,7 @@
       "contractInputsValues": {
         "_proposal": "0x0e89bda9685d6b9226b1a02946ab5612d520bc315f305fc7d248980d7d8dccfb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1392709400",
+        "_amount": "1397989300",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -383,7 +374,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -418,7 +408,7 @@
       "contractInputsValues": {
         "_proposal": "0x0e89bda9685d6b9226b1a02946ab5612d520bc315f305fc7d248980d7d8dccfb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2768704200",
+        "_amount": "2779200700",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -426,7 +416,48 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "_proposal",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "_token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "_amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "_maxTokensPerVote",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "_periods",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "name": "depositBribe",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "_proposal": "0x449f1cd28548d32d8ee8cc0c3681e66f6fb24a87c6ffd3c0f3c56dddd914dbf7",
+        "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "_amount": "583650100",
+        "_maxTokensPerVote": "0",
+        "_periods": "2"
+      }
+    },
+    {
+      "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
+      "value": "0",
       "contractMethod": {
         "inputs": [
           {
@@ -461,58 +492,14 @@
       "contractInputsValues": {
         "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "402700100",
+        "_amount": "642265800",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
     },
     {
-      "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_proposal",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "_token",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_amount",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "_maxTokensPerVote",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "_periods",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "depositBribe",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_proposal": "0x0814f156360b46d593ab7a82064270e52a4839f9387888ac6804f396d6cc857d",
-        "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "800567200",
-        "_maxTokensPerVote": "0",
-        "_periods": "1"
-      }
-    },
-    {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -547,7 +534,7 @@
       "contractInputsValues": {
         "_proposal": "0x57215c60f37d91fbfe5c7579b64d5cb54177487e00ac15fb1a47e52fbc2f2cbb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "863410200",
+        "_amount": "868827000",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -555,7 +542,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -590,7 +576,7 @@
       "contractInputsValues": {
         "_proposal": "0x57215c60f37d91fbfe5c7579b64d5cb54177487e00ac15fb1a47e52fbc2f2cbb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1716458200",
+        "_amount": "1727226700",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -598,7 +584,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -633,7 +618,7 @@
       "contractInputsValues": {
         "_proposal": "0x49e3ab087c8b94ca651f94dff5184db7878c674102de50146cb15b08c7d46ae4",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2067255400",
+        "_amount": "2080224800",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -641,7 +626,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -676,7 +660,7 @@
       "contractInputsValues": {
         "_proposal": "0x49e3ab087c8b94ca651f94dff5184db7878c674102de50146cb15b08c7d46ae4",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "4109700800",
+        "_amount": "4135483900",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -684,7 +668,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -719,7 +702,7 @@
       "contractInputsValues": {
         "_proposal": "0x5af8de3497a037fe4db1cb5a7af3ef1b0bf08830c0142ee3781a158b1d77eff3",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1624378800",
+        "_amount": "1634569700",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -727,7 +710,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -762,7 +744,7 @@
       "contractInputsValues": {
         "_proposal": "0x5af8de3497a037fe4db1cb5a7af3ef1b0bf08830c0142ee3781a158b1d77eff3",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "3229262600",
+        "_amount": "3249522100",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -770,7 +752,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -805,7 +786,7 @@
       "contractInputsValues": {
         "_proposal": "0xaaf8a660fecf97718794a9f613cf639a935c69126fdf36039d93b68d1205fc85",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "548367800",
+        "_amount": "551808100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -813,7 +794,6 @@
     {
       "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -848,7 +828,7 @@
       "contractInputsValues": {
         "_proposal": "0xaaf8a660fecf97718794a9f613cf639a935c69126fdf36039d93b68d1205fc85",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1090154400",
+        "_amount": "1096993700",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -856,7 +836,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -891,7 +870,7 @@
       "contractInputsValues": {
         "_proposal": "0x038d9da89f15beb5f88f06c927ac5f988afd1f9a08dc5331167b05f3e1aa43b2",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "110985100",
+        "_amount": "103403600",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -899,7 +878,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -934,7 +912,7 @@
       "contractInputsValues": {
         "_proposal": "0x8207d8f498ae05a8774ede84bda05c05ed2f8e3b2a82df8c59c9743fcc541dc0",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "210370100",
+        "_amount": "195999400",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -942,7 +920,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -977,7 +954,7 @@
       "contractInputsValues": {
         "_proposal": "0xdcf667050fbecfcf9f4f42afb6419a0a674fcece21e150e4cfe2161a669c9f17",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "145504200",
+        "_amount": "135564600",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -985,7 +962,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1020,7 +996,7 @@
       "contractInputsValues": {
         "_proposal": "0x707bb67938bb43ac3175b2421374d99a934a183eaa5d11f7059de9cfda41fae2",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "85350500",
+        "_amount": "79520100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1028,7 +1004,6 @@
     {
       "to": "0x45Bc37b18E73A42A4a826357a8348cDC042cCBBc",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1063,7 +1038,7 @@
       "contractInputsValues": {
         "_proposal": "0x5797f10313a30d3f6ce917d7376d2f11edab68ef83a8cacf8f65e8c3eaa7883f",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "219586000",
+        "_amount": "204585800",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -1071,7 +1046,6 @@
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1090,13 +1064,12 @@
       },
       "contractInputsValues": {
         "_to": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",
-        "_value": "8400996149"
+        "_value": "8400996159"
       }
     },
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1115,13 +1088,12 @@
       },
       "contractInputsValues": {
         "_to": "0xea06e1b4259730724885a39CE3ca670eFB020E26",
-        "_value": "324080980"
+        "_value": "350442266"
       }
     },
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1146,7 +1118,6 @@
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
-      "data": null,
       "contractMethod": {
         "inputs": [
           {
@@ -1165,32 +1136,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "13735706800"
-      }
-    },
-    {
-      "to": "0xba100000625a3754423978a60c9317c58a424e3D",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "4419209312218793616741"
+        "_value": "13987777600"
       }
     }
   ]
