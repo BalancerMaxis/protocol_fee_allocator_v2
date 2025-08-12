@@ -747,7 +747,7 @@ class FeeAllocator:
                 total_reward_amount,         # totalRewardAmount
                 fee_amount,                  # feeAmount
                 0,                           # voteType (NORMAL)
-                0,                           # closeType (NORMAL)
+                1,                           # closeType (ROLLOVER)
                 []                           # voterList
             )
 
