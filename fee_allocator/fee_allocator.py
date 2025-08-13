@@ -610,10 +610,6 @@ class FeeAllocator:
     
     def _check_paladin_gauge_requirements(self):
         """Check Paladin gauges for requirements and log issues"""
-        PALADIN_QUEST_BOARDS = {
-            "balancer": "0xfEb352930cA196a80B708CDD5dcb4eCA94805daB",
-            "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
-        }
         
         with open(f"{base_dir}/abi/gauge.json", "r") as f:
             gauge_abi = json.load(f)
@@ -640,8 +636,8 @@ class FeeAllocator:
                     if usdc_found:
                         distributor = contract.functions.reward_data(usdc).call()[1]
                         has_correct_distributor = (
-                            distributor.lower() == PALADIN_QUEST_BOARDS["balancer"].lower() or
-                            distributor.lower() == PALADIN_QUEST_BOARDS["aura"].lower()
+                            distributor.lower() == self.book["paladin/QuestBoardV2_1"].lower() or
+                            distributor.lower() == self.book["paladin/QuestBoardV2_1Aura"].lower()
                         )
                     
                     if not usdc_found or not has_correct_distributor:
@@ -649,9 +645,9 @@ class FeeAllocator:
                         
                         distributors_needed = []
                         if pool.to_bal_incentives_usd > 0:
-                            distributors_needed.append(f"Balancer distributor ({PALADIN_QUEST_BOARDS['balancer']})")
+                            distributors_needed.append(f"Balancer distributor ({self.book['paladin/QuestBoardV2_1']})")
                         if pool.to_aura_incentives_usd > 0:
-                            distributors_needed.append(f"Aura distributor ({PALADIN_QUEST_BOARDS['aura']})")
+                            distributors_needed.append(f"Aura distributor ({self.book['paladin/QuestBoardV2_1Aura']})")
                         
                         if distributors_needed:
                             if not usdc_found:
@@ -695,16 +691,12 @@ class FeeAllocator:
                 aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
     
     def _process_paladin_quests(self, bribe_df, usdc):
-        PALADIN_QUEST_BOARDS = {
-            "balancer": "0xfEb352930cA196a80B708CDD5dcb4eCA94805daB",
-            "aura": "0xfd9F19A9B91BecAE3c8dABC36CDd1eA86Fc1A222"
-        }
         
         valid_bribes = bribe_df[bribe_df["amount"] > 0]
         
         with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
             paladin_abi = json.load(f)
-        
+
         quest_boards = {}
         platform_fee_ratios = {}
         
@@ -713,7 +705,7 @@ class FeeAllocator:
             if bribes.empty:
                 continue
                 
-            quest_board_addr = PALADIN_QUEST_BOARDS[platform]
+            quest_board_addr = self.book["paladin/QuestBoardV2_1"] if platform == "balancer" else self.book["paladin/QuestBoardV2_1Aura"]
             quest_boards[platform] = SafeContract(quest_board_addr, abi=paladin_abi)
             
             w3_contract = self.run_config.mainnet.web3.eth.contract(
