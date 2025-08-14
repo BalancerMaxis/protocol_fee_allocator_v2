@@ -1,21 +1,33 @@
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+from typing import Dict, List, Any
 import requests
 
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from rich.columns import Columns
-from rich.text import Text
 
 from bal_addresses import AddrBook
 
 
 class PayloadVisualizer:
+    # Transaction group display order
+    TRANSACTION_PRIORITY_ORDER = [
+        "Aura Bribes",
+        "Balancer Bribes", 
+        "veBAL Transfers",
+        "DAO Transfers",
+        "Beets Transfers",
+        "Alliance Transfers",
+        "Partner Transfers",
+        "Token Approvals"
+    ]
+    
+    # Transfer group types for method categorization
+    TRANSFER_GROUPS = ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]
+    
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
@@ -142,6 +154,26 @@ class PayloadVisualizer:
         """Load and parse payload JSON"""
         with open(payload_path) as f:
             return json.load(f)
+    
+    def _load_fee_files(self, fee_files: List[Path]) -> tuple[Decimal, List[str]]:
+        """Helper to load fee files and calculate totals.
+        
+        Returns:
+            Tuple of (total_fees_collected, fee_details_list)
+        """
+        total_fees_collected = Decimal(0)
+        fee_details = []
+        
+        if fee_files:
+            for fee_file in fee_files:
+                if fee_file.exists():
+                    with open(fee_file) as f:
+                        fees_data = json.load(f)
+                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
+                    total_fees_collected += file_total
+                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        
+        return total_fees_collected, fee_details
     
     def load_recon_data(self, payload_path: Path) -> Dict[str, Any]:
         """Load reconciliation data for the payload"""
@@ -315,7 +347,7 @@ class PayloadVisualizer:
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
                 data["col4"] = "HiddenHand"
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
+        elif group_name in self.TRANSFER_GROUPS:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
             token_addr = tx.get("to", "")
@@ -341,7 +373,7 @@ class PayloadVisualizer:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
             return ["Gauge/Proposal", "Amount", "Token", "Market"]
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
+        elif group_name in self.TRANSFER_GROUPS:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
             return ["Token", "Spender", "Amount"]
@@ -455,16 +487,8 @@ class PayloadVisualizer:
         payload = self.parse_payload(payload_path)
         
         # Load fee files if provided
-        total_fees_collected = Decimal(0)
-        fee_details = []
-        if fee_files:
-            for fee_file in fee_files:
-                if fee_file.exists():
-                    with open(fee_file) as f:
-                        fees_data = json.load(f)
-                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
-                    total_fees_collected += file_total
-                    fee_details.append(f"- {fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        total_fees_collected, fee_details_raw = self._load_fee_files(fee_files)
+        fee_details = [f"- {detail}" for detail in fee_details_raw]
         
         # Group transactions
         groups = self.group_transactions(payload["transactions"])
@@ -496,20 +520,9 @@ class PayloadVisualizer:
                 md.append(f"| {issue.get('gauge', '')} | {issue.get('pool_id', '')} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
         
         # Add transaction tables in priority order
-        priority_order = [
-            "Aura Bribes",
-            "Balancer Bribes", 
-            "veBAL Transfers",
-            "DAO Transfers",
-            "Beets Transfers",
-            "Alliance Transfers",
-            "Partner Transfers",
-            "Token Approvals"
-        ]
-        
         md.append("\n## Transaction Details")
         
-        for group_name in priority_order:
+        for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 md.append(self.generate_markdown_table(group_name, groups[group_name]))
         
@@ -648,16 +661,7 @@ class PayloadVisualizer:
         payload = self.parse_payload(payload_path)
         
         # Load fee files if provided
-        total_fees_collected = Decimal(0)
-        fee_details = []
-        if fee_files:
-            for fee_file in fee_files:
-                if fee_file.exists():
-                    with open(fee_file) as f:
-                        fees_data = json.load(f)
-                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
-                    total_fees_collected += file_total
-                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        total_fees_collected, fee_details = self._load_fee_files(fee_files)
         
         # Group transactions
         groups = self.group_transactions(payload["transactions"])
@@ -697,18 +701,7 @@ class PayloadVisualizer:
             self.console.print(gauge_table)
             self.console.print()
         
-        priority_order = [
-            "Aura Bribes",
-            "Balancer Bribes", 
-            "veBAL Transfers",
-            "DAO Transfers",
-            "Beets Transfers",
-            "Alliance Transfers",
-            "Partner Transfers",
-            "Token Approvals"
-        ]
-        
-        for group_name in priority_order:
+        for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 table = self.create_transaction_table(group_name, groups[group_name])
                 self.console.print(table)
