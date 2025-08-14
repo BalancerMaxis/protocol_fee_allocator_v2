@@ -3,6 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
+import requests
 
 from rich.console import Console
 from rich.table import Table
@@ -18,10 +19,39 @@ class PayloadVisualizer:
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
-        self.alliance_addresses = [
-            "0xb867ea3bbc909954d737019122f2a4d3eb226cb9",  # Rocket Pool
-            "0x87d93d9b2c672bf9c9642d853a8682546a5012b5",  # Lido  
-        ]
+        self.alliance_addresses, self.alliance_names, self.partner_addresses, self.partner_names = self._load_fee_share_config()
+    
+    def _load_fee_share_config(self) -> tuple[List[str], Dict[str, str], List[str], Dict[str, str]]:
+        """Load alliance and partner addresses and names from GitHub config"""
+        response = requests.get(
+            "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/alliance_fee_share.json",
+            timeout=10
+        )
+        response.raise_for_status()
+        config = response.json()
+        
+        alliance_addresses = []
+        alliance_names = {}
+        partner_addresses = []
+        partner_names = {}
+        
+        # Extract alliance members
+        alliance_members = config.get('alliance_members', [])
+        for member in alliance_members:
+            if 'multisig_address' in member and 'name' in member:
+                addr_lower = member['multisig_address'].lower()
+                alliance_addresses.append(addr_lower)
+                alliance_names[addr_lower] = member['name']
+        
+        # Extract partners
+        partners = config.get('partners', [])
+        for partner in partners:
+            if 'multisig_address' in partner and 'name' in partner:
+                addr_lower = partner['multisig_address'].lower()
+                partner_addresses.append(addr_lower)
+                partner_names[addr_lower] = partner['name']
+        
+        return alliance_addresses, alliance_names, partner_addresses, partner_names
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
         """Format amount with currency symbol"""
@@ -46,12 +76,20 @@ class PayloadVisualizer:
                 name = parts[-1].replace("_", " ").title()
                 return f"{name} ({address[:6]}...{address[-4:]})"
         
-        # Alliance member addresses
-        if address.lower() == "0xb867ea3bbc909954d737019122f2a4d3eb226cb9":
-            return f"Rocket Pool (Alliance) ({address[:6]}...{address[-4:]})"
-        elif address.lower() == "0x87d93d9b2c672bf9c9642d853a8682546a5012b5":
-            return f"Lido (Alliance) ({address[:6]}...{address[-4:]})"
-        elif address.lower() == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
+        addr_lower = address.lower()
+        
+        # Check if it's an alliance member
+        if addr_lower in self.alliance_names:
+            alliance_name = self.alliance_names[addr_lower]
+            return f"{alliance_name} ({address[:6]}...{address[-4:]})"
+        
+        # Check if it's a partner
+        if addr_lower in self.partner_names:
+            partner_name = self.partner_names[addr_lower]
+            return f"{partner_name} ({address[:6]}...{address[-4:]})"
+        
+        # Special case for Beets Treasury
+        if addr_lower == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
             return f"Beets Treasury ({address[:6]}...{address[-4:]})"
         
         # Unknown address
@@ -87,11 +125,12 @@ class PayloadVisualizer:
                 elif recipient == self.book.get("multisigs/beets_treasury").lower():
                     groups["Beets Transfers"].append(tx)
                 elif recipient in self.alliance_addresses:
-                    # This is an alliance transfer
                     groups["Alliance Transfers"].append(tx)
-                else:
-                    # This is a partner transfer (not alliance)
+                elif recipient in self.partner_addresses:
                     groups["Partner Transfers"].append(tx)
+                else:
+                    # Unknown recipient - this should not happen
+                    raise ValueError(f"Unknown transfer recipient: {recipient}. This address is not configured as an alliance member, partner, or known protocol address. Please update the configuration.")
             elif method == "approve":
                 groups["Token Approvals"].append(tx)
             else:
