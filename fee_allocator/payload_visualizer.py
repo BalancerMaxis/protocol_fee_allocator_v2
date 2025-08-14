@@ -1,72 +1,105 @@
 import json
-from pathlib import Path
 from decimal import Decimal
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Dict, List, Optional, Any
 from collections import defaultdict
-import requests
 
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
+from rich.columns import Columns
+from rich.text import Text
 
 from bal_addresses import AddrBook
-from fee_allocator.constants import ALLIANCE_CONFIG_URL
 
 
 class PayloadVisualizer:
-    """Visualize fee allocator payload with rich formatting"""
-    
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
-
-        # Known addresses for better display
-        self.known_addresses = {
-            self.book.get("maxiKeepers/veBalFeeInjector", "").lower(): "veBAL Fee Injector",
-            self.book.get("multisigs/dao", "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f").lower(): "DAO Multisig",
-            self.book.get("hidden_hand2/aura_briber", "").lower(): "Aura Bribe Market",
-            self.book.get("hidden_hand2/balancer_briber", "").lower(): "Balancer Bribe Market",
-            self.book.get("hidden_hand2/bribe_vault", "").lower(): "Bribe Vault",
-            self.book.get("tokens/USDC", "").lower(): "USDC",
-            self.book.get("tokens/BAL", "").lower(): "BAL",
-        }
-        
-        # Load alliance config to identify alliance multisig addresses
-        self.alliance_addresses = {}
-        try:
-            alliance_config = requests.get(ALLIANCE_CONFIG_URL).json()
-            for member in alliance_config.get("alliance_members", []):
-                if member.get("multisig_address"):
-                    self.alliance_addresses[member["multisig_address"].lower()] = member["name"]
-        except Exception as e:
-            print(f"Warning: Could not load alliance config: {e}")
-            self.alliance_addresses = {}
-    
-    def format_address(self, address: str) -> str:
-        """Format address with known name if available"""
-        addr_lower = address.lower()
-        if addr_lower in self.known_addresses:
-            return f"{self.known_addresses[addr_lower]} ({address[:6]}...{address[-4:]})"
-        elif addr_lower in self.alliance_addresses:
-            return f"{self.alliance_addresses[addr_lower]} (Alliance) ({address[:6]}...{address[-4:]})"
-        return f"{address[:6]}...{address[-4:]}"
+        self.alliance_addresses = [
+            "0xb867ea3bbc909954d737019122f2a4d3eb226cb9",  # Rocket Pool
+            "0x87d93d9b2c672bf9c9642d853a8682546a5012b5",  # Lido  
+        ]
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
-        """Format token amounts with proper decimals"""
-        try:
-            if token == "USDC":
-                value = Decimal(amount) / Decimal(1e6)
-                return f"${value:,.2f}"
-            elif token == "BAL":
-                value = Decimal(amount) / Decimal(1e18)
-                return f"{value:,.2f} BAL"
-            else:
-                return amount
-        except:
-            return amount
+        """Format amount with currency symbol"""
+        if token == "BAL":
+            return f"{int(amount)/1e18:,.2f} BAL"
+        else:
+            try:
+                decimal_amount = Decimal(amount) / Decimal(1e6)
+                return f"${decimal_amount:,.2f}"
+            except:
+                return str(amount)
     
-    def parse_payload(self, payload_path: Path) -> Dict[str, Any]:
+    def format_address(self, address: str) -> str:
+        """Format address with name lookup"""
+        if not address:
+            return ""
+        
+        # Check if it's a known address
+        for key, value in self.book.items():
+            if value and value.lower() == address.lower():
+                parts = key.split("/")
+                name = parts[-1].replace("_", " ").title()
+                return f"{name} ({address[:6]}...{address[-4:]})"
+        
+        # Alliance member addresses
+        if address.lower() == "0xb867ea3bbc909954d737019122f2a4d3eb226cb9":
+            return f"Rocket Pool (Alliance) ({address[:6]}...{address[-4:]})"
+        elif address.lower() == "0x87d93d9b2c672bf9c9642d853a8682546a5012b5":
+            return f"Lido (Alliance) ({address[:6]}...{address[-4:]})"
+        elif address.lower() == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
+            return f"Beets Treasury ({address[:6]}...{address[-4:]})"
+        
+        # Unknown address
+        return f"{address[:6]}...{address[-4:]}"
+    
+    def group_transactions(self, transactions: List[Dict]) -> Dict[str, List[Dict]]:
+        """Group transactions by type"""
+        from collections import defaultdict
+        groups = defaultdict(list)
+        
+        for tx in transactions:
+            to_addr = tx.get("to", "").lower()
+            method = tx.get("contractMethod", {}).get("name", "")
+            
+            if method == "depositBribe":
+                if to_addr == self.book.get("hidden_hand2/aura_briber", "").lower():
+                    groups["Aura Bribes"].append(tx)
+                elif to_addr == self.book.get("hidden_hand2/balancer_briber", "").lower():
+                    groups["Balancer Bribes"].append(tx)
+            elif method in ["createRangedQuest", "createFixedQuest"]:
+                # Paladin Quest Boards
+                to_addr_lower = to_addr.lower()
+                if to_addr_lower == "0xfeb352930ca196a80b708cdd5dcb4eca94805dab":  # veBAL Quest Board
+                    groups["Balancer Bribes"].append(tx)
+                elif to_addr_lower == "0xfd9f19a9b91becae3c8dabc36cdd1ea86fc1a222":  # vlAURA Quest Board
+                    groups["Aura Bribes"].append(tx)
+            elif method == "transfer":
+                recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
+                if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
+                    groups["veBAL Transfers"].append(tx)
+                elif recipient == self.book.get("multisigs/dao", "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f").lower():
+                    groups["DAO Transfers"].append(tx)
+                elif recipient == self.book.get("multisigs/beets_treasury").lower():
+                    groups["Beets Transfers"].append(tx)
+                elif recipient in self.alliance_addresses:
+                    # This is an alliance transfer
+                    groups["Alliance Transfers"].append(tx)
+                else:
+                    # This is a partner transfer (not alliance)
+                    groups["Partner Transfers"].append(tx)
+            elif method == "approve":
+                groups["Token Approvals"].append(tx)
+            else:
+                raise ValueError(f"Unrecognized transaction method: {method} to address {to_addr}. This should never happen - the payload contains an unexpected transaction type.")
+        
+        return dict(groups)
+
+    def parse_payload(self, payload_path: Path) -> Dict:
         """Load and parse payload JSON"""
         with open(payload_path) as f:
             return json.load(f)
@@ -115,55 +148,56 @@ class PayloadVisualizer:
         if recon_file.exists():
             with open(recon_file) as f:
                 recon_data = json.load(f)
-                if recon_data:
-                    return recon_data[-1]  # Return latest entry
-        
+                return recon_data[-1] if recon_data else {}
         return {}
     
-    def group_transactions(self, transactions: List[Dict]) -> Dict[str, List[Dict]]:
-        """Group transactions by type"""
-        groups = defaultdict(list)
-        
-        for tx in transactions:
-            method = tx.get("contractMethod", {}).get("name", "unknown")
-            to_addr = tx.get("to", "").lower()
+    def load_gauge_issues(self, gauge_issues_path: Path = None) -> List[Dict]:
+        """Load gauge issues from paladin_gauge_status JSON if provided.
+        Can handle a single Path or a list of Paths.
+        """
+        if not gauge_issues_path:
+            return []
             
-            # Categorize transactions
-            if method == "approve":
-                groups["Token Approvals"].append(tx)
-            elif method == "depositBribe":
-                if to_addr == self.book.get("hidden_hand2/aura_briber", "").lower():
-                    groups["Aura Bribes"].append(tx)
-                elif to_addr == self.book.get("hidden_hand2/balancer_briber", "").lower():
-                    groups["Balancer Bribes"].append(tx)
-                else:
-                    groups["Other Bribes"].append(tx)
-            elif method in ["createRangedQuest", "createFixedQuest"]:
-                if to_addr == "0x8b2ba835056965808ad88e7ad7866bd57ae75839":  # veBAL Quest Board
-                    groups["Balancer Bribes"].append(tx)
-                elif to_addr == "0x653d8f14292a1c5239d6183b333de1f2e8669310":  # vlAURA Quest Board
-                    groups["Aura Bribes"].append(tx)
-                else:
-                    groups["Other Bribes"].append(tx)
-            elif method == "transfer":
-                recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
-                if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
-                    groups["veBAL Transfers"].append(tx)
-                elif recipient == self.book.get("multisigs/dao", "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f").lower():
-                    groups["DAO Transfers"].append(tx)
-                elif recipient == self.book.get("multisigs/beets_treasury").lower():
-                    groups["Beets Transfers"].append(tx)
-                elif recipient in self.alliance_addresses:
-                    # This is an alliance transfer
-                    groups["Alliance Transfers"].append(tx)
-                else:
-                    # This is a partner transfer (not alliance)
-                    groups["Partner Transfers"].append(tx)
-            else:
-                groups["Other Transactions"].append(tx)
+        # Handle both single path and list of paths
+        if isinstance(gauge_issues_path, list):
+            all_issues = []
+            for path in gauge_issues_path:
+                if path and path.exists():
+                    with open(path) as f:
+                        all_issues.extend(json.load(f))
+            return all_issues
+        elif gauge_issues_path.exists():
+            with open(gauge_issues_path) as f:
+                return json.load(f)
+        return []
+    
+    def create_gauge_issues_table(self, gauge_issues: List[Dict]) -> Table:
+        """Create a table for gauge issues"""
+        table = Table(
+            title="[bold red]⚠️  Paladin Gauge Configuration Required[/bold red]",
+            box=box.ROUNDED,
+            title_style="bold red",
+            header_style="bold red",
+            border_style="red"
+        )
         
-        return dict(groups)
-
+        table.add_column("Gauge", style="dim")
+        table.add_column("Pool ID", style="dim")
+        table.add_column("Chain", style="dim")
+        table.add_column("Amount", style="bold", justify="right")
+        table.add_column("Action Required", style="yellow")
+        
+        for issue in gauge_issues:
+            table.add_row(
+                issue.get("gauge", ""),
+                issue.get("pool_id", ""),
+                issue.get("chain", ""),
+                f"${issue.get('amount', 0):,.2f}",
+                issue.get("action", "")
+            )
+        
+        return table
+    
     def calculate_totals(self, groups: Dict[str, List[Dict]]) -> Dict[str, Decimal]:
         """Calculate all totals from grouped transactions"""
         totals = {
@@ -183,16 +217,17 @@ class PayloadVisualizer:
                 if "Bribe" in group_name:
                     method = tx.get("contractMethod", {}).get("name", "")
                     if method in ["createRangedQuest", "createFixedQuest"]:
-                        # Paladin Quest - use totalRewardAmount
                         if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
-                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            # For Paladin, include both totalRewardAmount and feeAmount
+                            total_reward = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            fee_amount = Decimal(tx["contractInputsValues"].get("feeAmount", "0"))
+                            amount = total_reward + fee_amount
                             totals["bribes_usdc"] += amount
                             if group_name == "Aura Bribes":
                                 totals["aura_bribes_usdc"] += amount
                             elif group_name == "Balancer Bribes":
                                 totals["bal_bribes_usdc"] += amount
                     else:
-                        # HiddenHand bribe - use _amount
                         if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
                             amount = Decimal(tx["contractInputsValues"]["_amount"])
                             totals["bribes_usdc"] += amount
@@ -226,15 +261,20 @@ class PayloadVisualizer:
         if "Bribe" in group_name:
             method = tx.get("contractMethod", {}).get("name", "")
             if method in ["createRangedQuest", "createFixedQuest"]:
-                # Paladin Quest transaction
-                data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("gauge", ""))
-                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                gauge = tx.get("contractInputsValues", {}).get("gauge", "")
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
+                # For Paladin, add totalRewardAmount + feeAmount to show full allocated amount
+                total_reward = int(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
+                fee_amount = int(tx.get("contractInputsValues", {}).get("feeAmount", "0"))
+                data["col2"] = self.format_amount(str(total_reward + fee_amount))
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
+                data["col4"] = "Paladin"
             else:
-                # HiddenHand bribe
-                data["col1"] = tx.get("contractInputsValues", {}).get("_proposal", "")[:10] + "..."
+                proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
+                data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
                 data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
+                data["col4"] = "HiddenHand"
         
         elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
@@ -261,7 +301,7 @@ class PayloadVisualizer:
     def get_table_headers(self, group_name: str) -> List[str]:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
-            return ["Gauge/Proposal", "Amount", "Token"]
+            return ["Gauge/Proposal", "Amount", "Token", "Market"]
         elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
@@ -297,88 +337,59 @@ class PayloadVisualizer:
                 # Calculate what percentage of core pool fees went to incentives
                 metrics['vote_incentives_pct_of_core'] = (totals['bribes_usdc'] / core_pool_fees * 100).quantize(Decimal('0.01'))
                 metrics['core_fees'] = core_pool_fees
-                
-                # Calculate non-core fees
-                if recon_data and 'noncoreFees' in recon_data:
-                    metrics['noncore_fees'] = Decimal(str(recon_data['noncoreFees'])) * Decimal('1e6')
-                elif total_fees_collected > 0:
-                    metrics['noncore_fees'] = total_fees_collected - core_pool_fees
-                else:
-                    # Fallback from distributed amounts
-                    metrics['noncore_fees'] = totals['total_usdc'] - core_pool_fees
-                
-                metrics['core_pool_pct'] = (core_pool_fees / (core_pool_fees + metrics['noncore_fees']) * 100).quantize(Decimal('0.01'))
-            else:
-                metrics['vote_incentives_pct_of_core'] = Decimal('0')
-                metrics['core_fees'] = Decimal('0')
-                metrics['noncore_fees'] = total_fees_collected if total_fees_collected > 0 else totals['total_usdc']
-                metrics['core_pool_pct'] = Decimal('0')
             
-            if totals['bribes_usdc'] > 0:
-                metrics['aura_bribe_pct'] = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-                metrics['bal_bribe_pct'] = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-        
-        if total_fees_collected > 0:
-            metrics['allocation_efficiency'] = (totals['total_usdc'] / total_fees_collected * 100).quantize(Decimal('0.01'))
-            metrics['discrepancy_usd'] = (total_fees_collected - totals['total_usdc']) / Decimal(1e6)
+            # Allocation efficiency
+            if total_fees_collected > 0:
+                metrics['allocation_efficiency'] = (totals['total_usdc'] / total_fees_collected * 100).quantize(Decimal('0.01'))
+                metrics['discrepancy_usd'] = (total_fees_collected - totals['total_usdc']) / Decimal('1e6')
+            elif recon_data:
+                # Use recon data to determine total fees
+                total_from_recon = Decimal(str(recon_data.get('coreFees', 0) + recon_data.get('noncoreFees', 0))) * Decimal('1e6')
+                if total_from_recon > 0:
+                    metrics['allocation_efficiency'] = (totals['total_usdc'] / total_from_recon * 100).quantize(Decimal('0.01'))
+                    metrics['discrepancy_usd'] = (total_from_recon - totals['total_usdc']) / Decimal('1e6')
         
         return metrics
-
+    
     def generate_markdown_summary(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0), recon_data: Dict = None) -> str:
         """Generate markdown version of the summary"""
         total_txs = len(payload["transactions"])
         totals = self.calculate_totals(groups)
         metrics = self.calculate_allocation_metrics(totals, total_fees_collected, recon_data)
         
-        md = ["## 📊 Payload Summary\n"]
+        md = []
+        md.append("## Payload Summary\n")
         md.append(f"**Total Transactions:** {total_txs}\n")
         
-        md.append("### USDC Allocations")
-        if 'bribes_pct' in metrics:
-            if 'core_fees' in metrics and metrics['core_fees'] > 0:
-                # Show as percentage of core pool fees
-                md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))} ({metrics['vote_incentives_pct_of_core']}% of core pool fees)")
-            else:
-                md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))} ({metrics['bribes_pct']}% of distributed)")
+        if totals['bribes_usdc'] > 0:
+            aura_pct = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
+            bal_pct = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
             
-            if 'aura_bribe_pct' in metrics:
-                md.append(f"  - Aura: {self.format_amount(str(totals['aura_bribes_usdc']))} ({metrics['aura_bribe_pct']}% of bribes)")
-                md.append(f"  - Balancer: {self.format_amount(str(totals['bal_bribes_usdc']))} ({metrics['bal_bribe_pct']}% of bribes)")
-            
-            md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))} ({metrics['dao_pct']}% of distributed)")
-            md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))} ({metrics['vebal_pct']}% of distributed)")
-            md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))} ({metrics['partner_pct']}% of distributed)")
-            md.append(f"- **Alliance Fees:** {self.format_amount(str(totals['alliance_usdc']))} ({metrics['alliance_pct']}% of distributed)")
-            md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))} ({metrics['beets_pct']}% of distributed)")
-        else:
-            md.append(f"- **Vote Incentives:** {self.format_amount(str(totals['bribes_usdc']))}")
-            md.append(f"- **DAO Fees:** {self.format_amount(str(totals['dao_usdc']))}")
-            md.append(f"- **veBAL Fees:** {self.format_amount(str(totals['vebal_usdc']))}")
-            md.append(f"- **Partner Fees:** {self.format_amount(str(totals['partner_usdc']))}")
-            md.append(f"- **Alliance Fees:** {self.format_amount(str(totals['alliance_usdc']))}")
-            md.append(f"- **Beets Fees:** {self.format_amount(str(totals['beets_usdc']))}")
-        md.append("")
+            md.append(f"**Vote Incentives:** ${totals['bribes_usdc']/Decimal(1e6):,.2f}")
+            if 'vote_incentives_pct_of_core' in metrics:
+                md.append(f" ({metrics['vote_incentives_pct_of_core']}% of core pool fees)")
+            md.append("\n")
+            md.append(f"  - Aura: ${totals['aura_bribes_usdc']/Decimal(1e6):,.2f} ({aura_pct}%)\n")
+            md.append(f"  - Balancer: ${totals['bal_bribes_usdc']/Decimal(1e6):,.2f} ({bal_pct}%)\n")
         
-        if 'core_fees' in metrics and metrics.get('core_fees', 0) > 0:
-            md.append("### 🔍 Allocation Validation")
-            md.append("")
-            md.append("**Fee Pool Breakdown:**")
-            md.append(f"- Core pool fees: {self.format_amount(str(metrics['core_fees']))} ({metrics['core_pool_pct']}%)")
-            md.append(f"- Non-core pool fees: {self.format_amount(str(metrics['noncore_fees']))} ({Decimal('100') - metrics['core_pool_pct']}%)")
-            md.append("")
+        md.append(f"**DAO Fees:** ${totals['dao_usdc']/Decimal(1e6):,.2f} ({metrics.get('dao_pct', 0)}% of total)\n")
+        md.append(f"**veBAL Fees:** ${totals['vebal_usdc']/Decimal(1e6):,.2f} ({metrics.get('vebal_pct', 0)}% of total)\n")
         
-        md.append("### veBAL Transfers")
-        md.append(f"- **USDC:** {self.format_amount(str(totals['vebal_usdc']))}")
-        md.append(f"- **BAL:** {self.format_amount(str(totals['vebal_bal']), 'BAL')}")
-        md.append("")
+        if totals['beets_usdc'] > 0:
+            md.append(f"**Beets Fees:** ${totals['beets_usdc']/Decimal(1e6):,.2f} ({metrics.get('beets_pct', 0)}% of total)\n")
         
-        md.append(f"### 💰 **TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))}**")
+        if totals['alliance_usdc'] > 0:
+            md.append(f"**Alliance Fees:** ${totals['alliance_usdc']/Decimal(1e6):,.2f} ({metrics.get('alliance_pct', 0)}% of total)\n")
+        
+        if totals['partner_usdc'] > 0:
+            md.append(f"**Partner Fees:** ${totals['partner_usdc']/Decimal(1e6):,.2f} ({metrics.get('partner_pct', 0)}% of total)\n")
+        
+        md.append(f"\n### 💰 **TOTAL USDC DISTRIBUTED: ${totals['total_usdc']/Decimal(1e6):,.2f}**\n")
         
         if 'allocation_efficiency' in metrics:
             md.append(f"\n**Allocation Efficiency:** {metrics['allocation_efficiency']}% of collected fees")
-            
-            if abs(metrics['discrepancy_usd']) > Decimal("0.01"):
-                md.append(f"**⚠️ Discrepancy:** ${metrics['discrepancy_usd']:,.2f}")
+            if metrics.get('discrepancy_usd', 0) != 0:
+                md.append(f"\n**⚠️ Discrepancy:** ${abs(metrics['discrepancy_usd']):,.2f}")
         
         return "\n".join(md)
     
@@ -392,11 +403,14 @@ class PayloadVisualizer:
         
         for tx in transactions:
             data = self.extract_transaction_data(group_name, tx)
-            md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} |")
+            if len(headers) == 4:
+                md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} | {data.get('col4', '')} |")
+            else:
+                md.append(f"| {data.get('col1', '')} | {data.get('col2', '')} | {data.get('col3', '')} |")
         
         return "\n".join(md)
     
-    def export_markdown(self, payload_path: Path, fee_files: List[Path] = None) -> str:
+    def export_markdown(self, payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None) -> str:
         """Export payload visualization as markdown"""
         # Load payload
         payload = self.parse_payload(payload_path)
@@ -411,21 +425,20 @@ class PayloadVisualizer:
                         fees_data = json.load(f)
                     file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
                     total_fees_collected += file_total
-                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+                    fee_details.append(f"- {fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
         
         # Group transactions
         groups = self.group_transactions(payload["transactions"])
         
-        # Build markdown
-        md = ["# Fee Allocator Payload Report\n"]
-        md.append(f"**File:** {payload_path.name}")
+        md = []
+        md.append(f"# Fee Allocator Payload Report")
+        md.append(f"\n**File:** {payload_path.name}")
         md.append(f"**Created:** {payload['meta'].get('name', 'Unknown')}")
         
         if fee_details:
             md.append("\n## Fees Collected")
-            for detail in fee_details:
-                md.append(f"- {detail}")
-            md.append(f"- **Total:** ${total_fees_collected/Decimal(1e6):,.2f}")
+            md.extend(fee_details)
+            md.append(f"**Total:** ${total_fees_collected/Decimal(1e6):,.2f}")
         
         md.append("")
 
@@ -433,6 +446,15 @@ class PayloadVisualizer:
         
         # Add summary
         md.append(self.generate_markdown_summary(payload, groups, total_fees_collected, recon_data))
+        
+        # Check for gauge issues
+        gauge_issues = self.load_gauge_issues(gauge_issues_path)
+        if gauge_issues:
+            md.append("\n## ⚠️ Gauge Configuration Required\n")
+            md.append("| Gauge | Pool ID | Chain | Amount | Action Required |")
+            md.append("|-------|---------|-------|--------|-----------------|")
+            for issue in gauge_issues:
+                md.append(f"| {issue.get('gauge', '')} | {issue.get('pool_id', '')} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
         
         # Add transaction tables in priority order
         priority_order = [
@@ -443,9 +465,7 @@ class PayloadVisualizer:
             "Beets Transfers",
             "Alliance Transfers",
             "Partner Transfers",
-            "Token Approvals",
-            "Other Bribes",
-            "Other Transactions"
+            "Token Approvals"
         ]
         
         md.append("\n## Transaction Details")
@@ -466,58 +486,72 @@ class PayloadVisualizer:
             "[bold cyan]Transaction Summary[/bold cyan]",
             "",
             f"Total Transactions: [bold]{total_txs}[/bold]",
-            "",
-            "[bold yellow]USDC Allocations:[/bold yellow]"
+            ""
         ]
         
-        if 'bribes_pct' in metrics:
-            # Show vote incentives with percentage of core pool fees if available
-            if 'core_fees' in metrics and metrics['core_fees'] > 0:
-                lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green] [dim]({metrics['vote_incentives_pct_of_core']}% of core pool fees)[/dim]")
-            else:
-                lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green] [dim]({metrics['bribes_pct']}% of total)[/dim]")
+        if totals['bribes_usdc'] > 0:
+            lines.append("[yellow]USDC Allocations:[/yellow]")
             
-            if 'aura_bribe_pct' in metrics:
-                lines.append(f"  [dim]→ Aura: {self.format_amount(str(totals['aura_bribes_usdc']))} ({metrics['aura_bribe_pct']}%)[/dim]")
-                lines.append(f"  [dim]→ Balancer: {self.format_amount(str(totals['bal_bribes_usdc']))} ({metrics['bal_bribe_pct']}%)[/dim]")
+            vote_incentives_line = f"• Vote Incentives: [bold]${totals['bribes_usdc']/Decimal(1e6):,.2f}[/bold]"
+            if 'vote_incentives_pct_of_core' in metrics:
+                vote_incentives_line += f" ({metrics['vote_incentives_pct_of_core']}% of core pool fees)"
+            lines.append(vote_incentives_line)
             
-            lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue] [dim]({metrics['dao_pct']}% of total)[/dim]")
-            lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta] [dim]({metrics['vebal_pct']}% of total)[/dim]")
-            lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan] [dim]({metrics['beets_pct']}% of total)[/dim]")
-            lines.append(f"• Alliance Fees: [bright_yellow]{self.format_amount(str(totals['alliance_usdc']))}[/bright_yellow] [dim]({metrics['alliance_pct']}% of total)[/dim]")
-            lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow] [dim]({metrics['partner_pct']}% of total)[/dim]")
+            aura_pct = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
+            bal_pct = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
+            lines.append(f"  → Aura: ${totals['aura_bribes_usdc']/Decimal(1e6):,.2f} ({aura_pct}%)")
+            lines.append(f"  → Balancer: ${totals['bal_bribes_usdc']/Decimal(1e6):,.2f} ({bal_pct}%)")
+        
+        lines.append(f"• DAO Fees: [bold]${totals['dao_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('dao_pct', 0)}% of total)")
+        lines.append(f"• veBAL Fees: [bold]${totals['vebal_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('vebal_pct', 0)}% of total)")
+        
+        if totals['beets_usdc'] > 0:
+            lines.append(f"• Beets Fees: [bold]${totals['beets_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('beets_pct', 0)}% of total)")
+        
+        if totals['alliance_usdc'] > 0:
+            lines.append(f"• Alliance Fees: [bold]${totals['alliance_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('alliance_pct', 0)}% of total)")
+        
+        if totals['partner_usdc'] > 0:
+            lines.append(f"• Partner Fees: [bold]${totals['partner_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('partner_pct', 0)}% of total)")
+        
+        lines.append("")
+        lines.append("[bold magenta]🔍 Allocation Validation[/bold magenta]")
+        lines.append("")
+        
+        # Fee pool breakdown if we have recon data
+        if recon_data and 'coreFees' in recon_data:
+            core_fees = Decimal(str(recon_data['coreFees']))
+            noncore_fees = Decimal(str(recon_data.get('noncoreFees', 0)))
+            total_fees = core_fees + noncore_fees
+            
+            if total_fees > 0:
+                core_pct = (core_fees / total_fees * 100).quantize(Decimal('0.01'))
+                noncore_pct = (noncore_fees / total_fees * 100).quantize(Decimal('0.01'))
+                lines.append("[dim]Fee Pool Breakdown:[/dim]")
+                lines.append(f"• Core pool fees: ${core_fees:,.2f} ({core_pct}%)")
+                lines.append(f"• Non-core pool fees: ${noncore_fees:,.2f} ({noncore_pct}%)")
+                lines.append("")
+        
+        if totals['vebal_bal'] > 0:
+            lines.append("[dim]veBAL Transfers:[/dim]")
+            lines.append(f"• USDC: ${totals['vebal_usdc']/Decimal(1e6):,.2f}")
+            lines.append(f"• BAL: {totals['vebal_bal']/Decimal(1e18):,.2f} BAL")
         else:
-            lines.append(f"• Vote Incentives: [green]{self.format_amount(str(totals['bribes_usdc']))}[/green]")
-            lines.append(f"• DAO Fees: [blue]{self.format_amount(str(totals['dao_usdc']))}[/blue]")
-            lines.append(f"• veBAL Fees: [magenta]{self.format_amount(str(totals['vebal_usdc']))}[/magenta]")
-            lines.append(f"• Beets Fees: [cyan]{self.format_amount(str(totals['beets_usdc']))}[/cyan]")
-            lines.append(f"• Alliance Fees: [bright_yellow]{self.format_amount(str(totals['alliance_usdc']))}[/bright_yellow]")
-            lines.append(f"• Partner Fees: [yellow]{self.format_amount(str(totals['partner_usdc']))}[/yellow]")
+            lines.append("[dim]veBAL Transfers:[/dim]")
+            lines.append(f"• USDC: ${totals['vebal_usdc']/Decimal(1e6):,.2f}")
+            lines.append(f"• BAL: 0.00 BAL")
         
-        # Add Allocation Validation section (matching markdown version)
-        if 'core_fees' in metrics and metrics.get('core_fees', 0) > 0:
-            lines.extend([
-                "",
-                "[bold yellow]🔍 Allocation Validation[/bold yellow]",
-                "",
-                "[dim]Fee Pool Breakdown:[/dim]",
-                f"• Core pool fees: [cyan]{self.format_amount(str(metrics['core_fees']))}[/cyan] [dim]({metrics['core_pool_pct']}%)[/dim]",
-                f"• Non-core pool fees: [magenta]{self.format_amount(str(metrics['noncore_fees']))}[/magenta] [dim]({Decimal('100') - metrics['core_pool_pct']}%)[/dim]"
-            ])
-        
-        lines.extend([
-            "",
-            "[bold yellow]veBAL Transfers:[/bold yellow]",
-            f"• USDC: [green]{self.format_amount(str(totals['vebal_usdc']))}[/green]",
-            f"• BAL: [cyan]{self.format_amount(str(totals['vebal_bal']), 'BAL')}[/cyan]",
-            "",
-            f"[bold red on white] TOTAL USDC DISTRIBUTED: {self.format_amount(str(totals['total_usdc']))} [/bold red on white]"
-        ])
+        lines.append("")
+        lines.append(f"[bold green] TOTAL USDC DISTRIBUTED: ${totals['total_usdc']/Decimal(1e6):,.2f}[/bold green]")
         
         if 'allocation_efficiency' in metrics:
-            lines.append(f"\n[bold yellow]Allocation Efficiency:[/bold yellow] {metrics['allocation_efficiency']}% of collected fees")
+            lines.append("")
+            if metrics['allocation_efficiency'] >= 100:
+                lines.append(f"[bold green]Allocation Efficiency:[/bold green] {metrics['allocation_efficiency']}% of collected fees")
+            else:
+                lines.append(f"[bold yellow]Allocation Efficiency:[/bold yellow] {metrics['allocation_efficiency']}% of collected fees")
             
-            if abs(metrics['discrepancy_usd']) > Decimal("0.01"):
+            if metrics.get('discrepancy_usd', 0) != 0:
                 lines.append(f"[bold red]Discrepancy:[/bold red] ${metrics['discrepancy_usd']:,.2f}")
         
         return Panel("\n".join(lines), title="📊 Payload Summary", border_style="bright_blue")
@@ -546,10 +580,13 @@ class PayloadVisualizer:
             border_style=style
         )
         
-        # Add columns based on group
         headers = self.get_table_headers(group_name)
-        styles = ["dim", "bold", "dim"] if "Approval" not in group_name else ["dim", "dim", "dim"]
-        justifies = ["left", "right", "left"]
+        if len(headers) == 4:
+            styles = ["dim", "bold", "dim", "dim"]
+            justifies = ["left", "right", "left", "left"]
+        else:
+            styles = ["dim", "bold", "dim"] if "Approval" not in group_name else ["dim", "dim", "dim"]
+            justifies = ["left", "right", "left"]
         
         for header, style_col, justify in zip(headers, styles, justifies):
             table.add_column(header, style=style_col, justify=justify)
@@ -557,11 +594,14 @@ class PayloadVisualizer:
         # Add rows
         for tx in transactions:
             data = self.extract_transaction_data(group_name, tx)
-            table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''))
+            if len(headers) == 4:
+                table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''), data.get('col4', ''))
+            else:
+                table.add_row(data.get('col1', ''), data.get('col2', ''), data.get('col3', ''))
         
         return table
     
-    def visualize_payload(self, payload_path: Path, fee_files: List[Path] = None):
+    def visualize_payload(self, payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None):
         """Main visualization function"""
         self.console.clear()
         
@@ -612,6 +652,12 @@ class PayloadVisualizer:
         self.console.print(summary)
         self.console.print()
         
+        gauge_issues = self.load_gauge_issues(gauge_issues_path)
+        if gauge_issues:
+            gauge_table = self.create_gauge_issues_table(gauge_issues)
+            self.console.print(gauge_table)
+            self.console.print()
+        
         priority_order = [
             "Aura Bribes",
             "Balancer Bribes", 
@@ -620,9 +666,7 @@ class PayloadVisualizer:
             "Beets Transfers",
             "Alliance Transfers",
             "Partner Transfers",
-            "Token Approvals",
-            "Other Bribes",
-            "Other Transactions"
+            "Token Approvals"
         ]
         
         for group_name in priority_order:
@@ -632,13 +676,13 @@ class PayloadVisualizer:
                 self.console.print()
         
 
-def visualize_payload(payload_path: Path, fee_files: List[Path] = None):
+def visualize_payload(payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None):
     """Convenience function to visualize a payload"""
     visualizer = PayloadVisualizer()
-    visualizer.visualize_payload(payload_path, fee_files)
+    visualizer.visualize_payload(payload_path, fee_files, gauge_issues_path)
 
 
-def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None):
+def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None):
     """Visualize a combined payload with fee comparison"""
     fee_files = []
     if v2_fees_file and v2_fees_file.exists():
@@ -646,16 +690,16 @@ def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
     
-    visualize_payload(payload_path, fee_files)
+    visualizer = PayloadVisualizer()
+    visualizer.visualize_payload(payload_path, fee_files, gauge_issues_path)
 
 
-def export_markdown(payload_path: Path, fee_files: List[Path] = None) -> str:
+def export_markdown(payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None) -> str:
     """Export payload visualization as markdown"""
     visualizer = PayloadVisualizer()
-    return visualizer.export_markdown(payload_path, fee_files)
+    return visualizer.export_markdown(payload_path, fee_files, gauge_issues_path)
 
-
-def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> str:
+def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None) -> str:
     """Export combined payload visualization as markdown"""
     fee_files = []
     if v2_fees_file and v2_fees_file.exists():
@@ -663,16 +707,17 @@ def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_f
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
     
-    return export_markdown(payload_path, fee_files)
+    return export_markdown(payload_path, fee_files, gauge_issues_path)
 
 
-def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, output_path: Path = None) -> Path:
+def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, output_path: Path = None, gauge_issues_path: Path = None) -> Path:
     """Generate and save payload report to reports directory
     
     Args:
         payload_path: Path to the payload JSON file
         fee_files: Optional list of fee collection JSON files
         output_path: Optional output path. If not provided, saves to reports directory
+        gauge_issues_path: Optional path to gauge issues JSON file
         
     Returns:
         Path to the saved report
@@ -680,7 +725,7 @@ def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, outpu
     from fee_allocator.accounting import PROJECT_ROOT
     
     # Generate markdown content
-    markdown_content = export_markdown(payload_path, fee_files)
+    markdown_content = export_markdown(payload_path, fee_files, gauge_issues_path)
     
     if output_path is None:
         # Extract date from payload filename
@@ -698,7 +743,7 @@ def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, outpu
     return output_path
 
 
-def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> Path:
+def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None) -> Path:
     """Generate and save combined payload report to reports directory
     
     This is a convenience wrapper that handles the v2/v3 fee files specifically.
@@ -709,7 +754,7 @@ def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
     
-    return save_markdown_report(payload_path, fee_files)
+    return save_markdown_report(payload_path, fee_files, gauge_issues_path=gauge_issues_path)
 
 
 if __name__ == "__main__":
@@ -721,11 +766,12 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, help="Output file for markdown export (defaults to reports directory)")
     parser.add_argument("--v2-fees", type=Path, help="Path to v2 fees JSON file")
     parser.add_argument("--v3-fees", type=Path, help="Path to v3 fees JSON file")
+    parser.add_argument("--gauge-issues", type=Path, help="Path to paladin_gauge_status JSON file")
     
     args = parser.parse_args()
     
     if args.markdown:
-        markdown_content = export_combined_markdown(args.payload_file, args.v2_fees, args.v3_fees)
+        markdown_content = export_combined_markdown(args.payload_file, args.v2_fees, args.v3_fees, args.gauge_issues)
         if args.output:
             output_path = args.output
         else:
@@ -741,4 +787,4 @@ if __name__ == "__main__":
         else:
             print(markdown_content)
     else:
-        visualize_combined_payload(args.payload_file, args.v2_fees, args.v3_fees)
+        visualize_combined_payload(args.payload_file, args.v2_fees, args.v3_fees, args.gauge_issues)

@@ -375,6 +375,9 @@ class CorePoolChain(AbstractCorePoolChain):
 
             if protocol_version == 3 and self.chains.protocol_version == "v3":
                 pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
+                if pool_fee_data is None:
+                    continue
+
                 alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
                 partner_pool = next((p for p in self.partner_pools if p.pool_id == pool_id), None)
                 
@@ -403,8 +406,9 @@ class CorePoolChain(AbstractCorePoolChain):
                 # Partner pools bypass _should_add_pool check
                 if alliance_pool or partner_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
                     pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
+                    if pool_fee_data is None:
+                        continue
                     
-                    # Check if this is a non-core pool (either alliance or partner)
                     is_non_core = False
                     if alliance_pool and alliance_pool.pool_type != "core":
                         self.alliance_noncore_fee_data.append(pool_fee_data)
@@ -453,6 +457,11 @@ class CorePoolChain(AbstractCorePoolChain):
         start_snap: PoolSnapshot,
         end_snap: PoolSnapshot,
     ) -> Optional[PoolFeeData]:
+        gauge_address = pool_to_gauge.get(pool_id)
+        if not gauge_address:
+            logger.warning(f"Pool {pool_id} ({label}) has no gauge, skipping")
+            return None
+            
         logger.info(f"fetching twap prices for {label} on {self.name}")
         try:
             prices = self.subgraph.get_twap_price_pool(
@@ -473,7 +482,7 @@ class CorePoolChain(AbstractCorePoolChain):
             symbol=label,
             bpt_price=prices.bpt_price.twap_price,
             tokens_price=prices.token_prices,
-            gauge_address=pool_to_gauge.get(pool_id),
+            gauge_address=gauge_address,
             start_pool_snapshot=start_snap,
             end_pool_snapshot=end_snap,
             last_join_exit_ts=last_join_exit_ts,
@@ -486,6 +495,11 @@ class CorePoolChain(AbstractCorePoolChain):
         label: str,
         pool_to_gauge: Dict[str, str],
     ) -> Optional[PoolFeeData]:
+        gauge_address = pool_to_gauge.get(pool_id)
+        if not gauge_address:
+            logger.warning(f"Pool {pool_id} ({label}) has no gauge, skipping")
+            return None
+            
         logger.info(f"fetching twap prices for {label} on {self.name}")
 
         try:
@@ -499,7 +513,7 @@ class CorePoolChain(AbstractCorePoolChain):
                 address=pool_id,
                 symbol=label,
                 tokens_price=None,
-                gauge_address=pool_to_gauge.get(pool_id),
+                gauge_address=gauge_address,
                 start_pool_snapshot=None,
                 end_pool_snapshot=None,
                 last_join_exit_ts=last_join_exit_ts,

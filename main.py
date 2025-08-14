@@ -53,17 +53,22 @@ def main() -> None:
     fee_allocator.allocate()
     fee_allocator.recon()
 
-    # Generate all artifacts
     artifacts = fee_allocator.generate_artifacts()
     payload_path = artifacts["payload"]
 
     fee_file_name = args.fees_file_name or f"{args.protocol_version}_fees_{start_date}_{end_date}.json"
     fee_file_path = Path(f"fee_allocator/fees_collected/{fee_file_name}")
+    gauge_issues_path = Path(f"fee_allocator/allocations/{args.protocol_version}_paladin_gauge_status_{fee_allocator.start_date}_{fee_allocator.end_date}.json")
+
     report_path = fee_allocator.generate_report(payload_path, [fee_file_path] if fee_file_path.exists() else None)
 
     if not args.no_visualize:
         print("\n" + "="*80 + "\n")
-        visualize_payload(payload_path, [fee_file_path] if fee_file_path.exists() else None)
+        visualize_payload(
+            payload_path, 
+            [fee_file_path] if fee_file_path.exists() else None,
+            gauge_issues_path if gauge_issues_path.exists() else None
+        )
         print("\n" + "="*80 + "\n")
 
 
