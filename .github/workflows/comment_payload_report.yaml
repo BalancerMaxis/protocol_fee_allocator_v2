@@ -51,10 +51,17 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const fs = require('fs');
-            const reportPath = 'fee_allocator/reports/${{ inputs.end_date }}.md';
+            const endDate = '${{ inputs.end_date }}';
+            
+            if (!endDate) {
+              console.log('No end_date provided, skipping report comment');
+              return;
+            }
+            
+            const reportPath = `fee_allocator/reports/${endDate}.md`;
 
-            if (!reportPath) {
-              console.log('No report found or generated');
+            if (!fs.existsSync(reportPath)) {
+              console.log(`Report file not found: ${reportPath}`);
               return;
             }
 

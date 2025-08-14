@@ -35,19 +35,33 @@ jobs:
             exit 0
           fi
 
-          # Get the path of the changed JSON file
+          # Try to get the path of the changed JSON file from git diff
           JSON_PATH=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'fee_allocator/fees_collected/.*\.json$' | head -n 1)
 
+          # If no changed file found (e.g., on rerun), get the most recent fee file
           if [ -z "$JSON_PATH" ]; then
-            echo "No JSON file found in recent changes."
-            exit 1
+            echo "No JSON file found in git diff, looking for most recent fee files..."
+            JSON_PATH=$(ls -t fee_allocator/fees_collected/v*_fees_*.json 2>/dev/null | head -n 1)
+            
+            if [ -z "$JSON_PATH" ]; then
+              echo "No fee files found at all."
+              exit 1
+            fi
+            
+            echo "Using most recent fee file: $JSON_PATH"
           fi
 
           echo "JSON Path: $JSON_PATH"
 
           # Extract the end date from filename using cut
           END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f4 | cut -d'.' -f1)
+          
+          if [ -z "$END_DATE" ]; then
+            echo "Failed to extract date from filename: $JSON_PATH"
+            exit 1
+          fi
 
+          echo "Extracted end date: $END_DATE"
           echo "end-date=$END_DATE" >> $GITHUB_OUTPUT
 
       - name: Setup Python 3.10
@@ -112,7 +126,7 @@ jobs:
 
   comment_report:
     needs: process_fees
-    if: needs.process_fees.outputs.pr_number
+    if: needs.process_fees.outputs.pr_number && needs.process_fees.outputs.end_date
     uses: ./.github/workflows/comment_payload_report.yaml
     with:
       pr_number: ${{ needs.process_fees.outputs.pr_number }}
