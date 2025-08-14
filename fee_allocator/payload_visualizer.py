@@ -1,27 +1,69 @@
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+from typing import Dict, List, Any
+import requests
 
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from rich.columns import Columns
-from rich.text import Text
 
 from bal_addresses import AddrBook
 
 
 class PayloadVisualizer:
+    # Transaction group display order
+    TRANSACTION_PRIORITY_ORDER = [
+        "Aura Bribes",
+        "Balancer Bribes", 
+        "veBAL Transfers",
+        "DAO Transfers",
+        "Beets Transfers",
+        "Alliance Transfers",
+        "Partner Transfers",
+        "Token Approvals"
+    ]
+    
+    # Transfer group types for method categorization
+    TRANSFER_GROUPS = ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]
+    
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
-        self.alliance_addresses = [
-            "0xb867ea3bbc909954d737019122f2a4d3eb226cb9",  # Rocket Pool
-            "0x87d93d9b2c672bf9c9642d853a8682546a5012b5",  # Lido  
-        ]
+        self.alliance_addresses, self.alliance_names, self.partner_addresses, self.partner_names = self._load_fee_share_config()
+    
+    def _load_fee_share_config(self) -> tuple[List[str], Dict[str, str], List[str], Dict[str, str]]:
+        """Load alliance and partner addresses and names from GitHub config"""
+        response = requests.get(
+            "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/alliance_fee_share.json",
+            timeout=10
+        )
+        response.raise_for_status()
+        config = response.json()
+        
+        alliance_addresses = []
+        alliance_names = {}
+        partner_addresses = []
+        partner_names = {}
+        
+        # Extract alliance members
+        alliance_members = config.get('alliance_members', [])
+        for member in alliance_members:
+            if 'multisig_address' in member and 'name' in member:
+                addr_lower = member['multisig_address'].lower()
+                alliance_addresses.append(addr_lower)
+                alliance_names[addr_lower] = member['name']
+        
+        # Extract partners
+        partners = config.get('partners', [])
+        for partner in partners:
+            if 'multisig_address' in partner and 'name' in partner:
+                addr_lower = partner['multisig_address'].lower()
+                partner_addresses.append(addr_lower)
+                partner_names[addr_lower] = partner['name']
+        
+        return alliance_addresses, alliance_names, partner_addresses, partner_names
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
         """Format amount with currency symbol"""
@@ -46,12 +88,20 @@ class PayloadVisualizer:
                 name = parts[-1].replace("_", " ").title()
                 return f"{name} ({address[:6]}...{address[-4:]})"
         
-        # Alliance member addresses
-        if address.lower() == "0xb867ea3bbc909954d737019122f2a4d3eb226cb9":
-            return f"Rocket Pool (Alliance) ({address[:6]}...{address[-4:]})"
-        elif address.lower() == "0x87d93d9b2c672bf9c9642d853a8682546a5012b5":
-            return f"Lido (Alliance) ({address[:6]}...{address[-4:]})"
-        elif address.lower() == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
+        addr_lower = address.lower()
+        
+        # Check if it's an alliance member
+        if addr_lower in self.alliance_names:
+            alliance_name = self.alliance_names[addr_lower]
+            return f"{alliance_name} ({address[:6]}...{address[-4:]})"
+        
+        # Check if it's a partner
+        if addr_lower in self.partner_names:
+            partner_name = self.partner_names[addr_lower]
+            return f"{partner_name} ({address[:6]}...{address[-4:]})"
+        
+        # Special case for Beets Treasury
+        if addr_lower == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
             return f"Beets Treasury ({address[:6]}...{address[-4:]})"
         
         # Unknown address
@@ -87,11 +137,12 @@ class PayloadVisualizer:
                 elif recipient == self.book.get("multisigs/beets_treasury").lower():
                     groups["Beets Transfers"].append(tx)
                 elif recipient in self.alliance_addresses:
-                    # This is an alliance transfer
                     groups["Alliance Transfers"].append(tx)
-                else:
-                    # This is a partner transfer (not alliance)
+                elif recipient in self.partner_addresses:
                     groups["Partner Transfers"].append(tx)
+                else:
+                    # Unknown recipient - this should not happen
+                    raise ValueError(f"Unknown transfer recipient: {recipient}. This address is not configured as an alliance member, partner, or known protocol address. Please update the configuration.")
             elif method == "approve":
                 groups["Token Approvals"].append(tx)
             else:
@@ -103,6 +154,26 @@ class PayloadVisualizer:
         """Load and parse payload JSON"""
         with open(payload_path) as f:
             return json.load(f)
+    
+    def _load_fee_files(self, fee_files: List[Path]) -> tuple[Decimal, List[str]]:
+        """Helper to load fee files and calculate totals.
+        
+        Returns:
+            Tuple of (total_fees_collected, fee_details_list)
+        """
+        total_fees_collected = Decimal(0)
+        fee_details = []
+        
+        if fee_files:
+            for fee_file in fee_files:
+                if fee_file.exists():
+                    with open(fee_file) as f:
+                        fees_data = json.load(f)
+                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
+                    total_fees_collected += file_total
+                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        
+        return total_fees_collected, fee_details
     
     def load_recon_data(self, payload_path: Path) -> Dict[str, Any]:
         """Load reconciliation data for the payload"""
@@ -276,7 +347,7 @@ class PayloadVisualizer:
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
                 data["col4"] = "HiddenHand"
         
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
+        elif group_name in self.TRANSFER_GROUPS:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
             token_addr = tx.get("to", "")
@@ -302,7 +373,7 @@ class PayloadVisualizer:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
             return ["Gauge/Proposal", "Amount", "Token", "Market"]
-        elif group_name in ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]:
+        elif group_name in self.TRANSFER_GROUPS:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
             return ["Token", "Spender", "Amount"]
@@ -416,16 +487,8 @@ class PayloadVisualizer:
         payload = self.parse_payload(payload_path)
         
         # Load fee files if provided
-        total_fees_collected = Decimal(0)
-        fee_details = []
-        if fee_files:
-            for fee_file in fee_files:
-                if fee_file.exists():
-                    with open(fee_file) as f:
-                        fees_data = json.load(f)
-                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
-                    total_fees_collected += file_total
-                    fee_details.append(f"- {fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        total_fees_collected, fee_details_raw = self._load_fee_files(fee_files)
+        fee_details = [f"- {detail}" for detail in fee_details_raw]
         
         # Group transactions
         groups = self.group_transactions(payload["transactions"])
@@ -457,20 +520,9 @@ class PayloadVisualizer:
                 md.append(f"| {issue.get('gauge', '')} | {issue.get('pool_id', '')} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
         
         # Add transaction tables in priority order
-        priority_order = [
-            "Aura Bribes",
-            "Balancer Bribes", 
-            "veBAL Transfers",
-            "DAO Transfers",
-            "Beets Transfers",
-            "Alliance Transfers",
-            "Partner Transfers",
-            "Token Approvals"
-        ]
-        
         md.append("\n## Transaction Details")
         
-        for group_name in priority_order:
+        for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 md.append(self.generate_markdown_table(group_name, groups[group_name]))
         
@@ -609,16 +661,7 @@ class PayloadVisualizer:
         payload = self.parse_payload(payload_path)
         
         # Load fee files if provided
-        total_fees_collected = Decimal(0)
-        fee_details = []
-        if fee_files:
-            for fee_file in fee_files:
-                if fee_file.exists():
-                    with open(fee_file) as f:
-                        fees_data = json.load(f)
-                    file_total = sum(Decimal(str(amount)) for amount in fees_data.values())
-                    total_fees_collected += file_total
-                    fee_details.append(f"{fee_file.stem}: ${file_total/Decimal(1e6):,.2f}")
+        total_fees_collected, fee_details = self._load_fee_files(fee_files)
         
         # Group transactions
         groups = self.group_transactions(payload["transactions"])
@@ -658,18 +701,7 @@ class PayloadVisualizer:
             self.console.print(gauge_table)
             self.console.print()
         
-        priority_order = [
-            "Aura Bribes",
-            "Balancer Bribes", 
-            "veBAL Transfers",
-            "DAO Transfers",
-            "Beets Transfers",
-            "Alliance Transfers",
-            "Partner Transfers",
-            "Token Approvals"
-        ]
-        
-        for group_name in priority_order:
+        for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 table = self.create_transaction_table(group_name, groups[group_name])
                 self.console.print(table)
