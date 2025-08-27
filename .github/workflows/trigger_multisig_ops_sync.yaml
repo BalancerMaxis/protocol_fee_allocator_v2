@@ -7,7 +7,7 @@ name: Trigger Multisig Ops Sync
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches: [biweekly-runs]
 
 jobs:
   trigger_sync:
