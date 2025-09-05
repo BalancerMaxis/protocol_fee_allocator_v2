@@ -208,9 +208,9 @@ def test_beets_fee_split(allocator_exact: FeeAllocator):
     
     assert optimism_chain.noncore_to_beets_usd == optimism_chain.noncore_fees_collected * Decimal('0.5'), \
         "Non-core Beets should be exactly 50% of non-core fees"
-    assert optimism_chain.alliance_noncore_to_beets_usd == optimism_chain.alliance_noncore_fees_collected * Decimal('0.5'), \
+    assert optimism_chain.alliance_noncore_to_beets_usd == optimism_chain._get_alliance_noncore_fees_collected() * Decimal('0.5'), \
         "Alliance non-core Beets should be exactly 50%"
-    assert optimism_chain.partner_noncore_to_beets_usd == optimism_chain.partner_noncore_fees_collected * Decimal('0.5'), \
+    assert optimism_chain.partner_noncore_to_beets_usd == optimism_chain._get_partner_noncore_fees_collected() * Decimal('0.5'), \
         "Partner non-core Beets should be exactly 50%"
 
 
@@ -306,14 +306,14 @@ def test_alliance_fee_split(allocator_exact: FeeAllocator):
         
         for pool_data in chain.alliance_noncore_fee_data:
             alliance_pools_found = True
-            partner_fee = chain.get_alliance_noncore_partner_fee(pool_data.pool_id)
+            partner_fee = chain.get_alliance_noncore_member_fee(pool_data.pool_id)
             total_alliance_fees += partner_fee
             
-            if chain.alliance_noncore_fees_collected > 0:
+            if chain.alliance_noncore_fees_earned > 0:
                 expected_fee = (
                     pool_data.total_earned_fees_usd_twap / 
-                    chain.alliance_noncore_fees_collected *
-                    chain.alliance_noncore_fees_collected *
+                    chain.alliance_noncore_fees_earned *
+                    chain._get_alliance_noncore_fees_collected() *
                     alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
                 )
                 
