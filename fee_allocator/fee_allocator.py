@@ -428,7 +428,7 @@ class FeeAllocator:
                     pool_id = core_pool.pool_id
                     pool_type = "core"
                 elif noncore_pool:
-                    partner_fee = chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
+                    partner_fee = chain.get_alliance_noncore_member_fee(alliance_pool.pool_id)
                     pool_id = noncore_pool.pool_id
                     pool_type = "non-core"
                 else:
@@ -792,7 +792,7 @@ class FeeAllocator:
             total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd
 
             for noncore_pool in chain.alliance_noncore_fee_data:
-                total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
+                total_partner += chain.get_alliance_noncore_member_fee(noncore_pool.pool_id)
             
             for noncore_pool in chain.partner_noncore_fee_data:
                 total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
@@ -809,15 +809,28 @@ class FeeAllocator:
         core_pool_incentives = total_aura + total_bal
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
-        total_core_fees = sum(chain.total_earned_fees_usd_twap for chain in self.run_config.all_chains)
-        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected + chain.partner_noncore_fees_collected for chain in self.run_config.all_chains)
+        # Calculate actual collected core fees (what was actually distributed to core pools)
+        total_core_fees_collected = Decimal(0)
+        for chain in self.run_config.all_chains:
+            # Core pools get their share of collected fees based on earned/total_earned ratio
+            if chain.total_fees_earned > 0:
+                core_share = chain.total_earned_fees_usd_twap / chain.total_fees_earned
+                total_core_fees_collected += chain.fees_collected * core_share
+        
+        # Calculate actual collected non-core fees
+        total_noncore_fees_collected = Decimal(0)
+        for chain in self.run_config.all_chains:
+            # Non-core fees are what's left after core pools
+            if chain.total_fees_earned > 0:
+                noncore_share = (chain.noncore_fees_collected + chain.alliance_noncore_fees_earned + chain.partner_noncore_fees_earned) / chain.total_fees_earned
+                total_noncore_fees_collected += chain.fees_collected * noncore_share
         
         summary = {
             "feesCollected": float(round(total_fees, 2)),
             "totalDistributed": float(round(total_distributed, 2)),
             "feesNotDistributed": float(round(total_fees - total_distributed, 2)),
-            "coreFees": float(round(total_core_fees, 2)),
-            "noncoreFees": float(round(total_noncore_fees, 2)),
+            "coreFees": float(round(total_core_fees_collected, 2)),
+            "noncoreFees": float(round(total_noncore_fees_collected, 2)),
             "auraIncentives": float(round(total_aura, 2)),
             "balIncentives": float(round(total_bal, 2)),
             "feesToDao": float(round(total_dao, 2)),

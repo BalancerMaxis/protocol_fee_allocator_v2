@@ -382,8 +382,7 @@ class PayloadVisualizer:
         """Get core pool fees from reconciliation data.
         """
         if recon_data and 'coreFees' in recon_data:
-            # Use actual core fees from reconciliation data
-            return Decimal(str(recon_data['coreFees'])) * Decimal('1e6')  # Convert to raw USDC units
+            return Decimal(str(recon_data['coreFees'])) * Decimal('1e6')
         else:
             # No recon data means we can't determine core fees
             return Decimal('0')
