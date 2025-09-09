@@ -527,16 +527,19 @@ class CorePoolChain(AbstractCorePoolChain):
         """Returns the Beets share factor for this chain (0.5 for Optimism, 0 for others)"""
         return Decimal(self.chains.fee_config.beets_share_pct) if self.name == "optimism" else Decimal(0)
     
-    def get_alliance_noncore_partner_fee(self, pool_id: str) -> Decimal:
+    def _get_alliance_noncore_fees_collected(self) -> Decimal:
+        if self.alliance_noncore_fees_earned == 0 or self.total_fees_earned == 0:
+            return Decimal(0)
+        return self.fees_collected * (self.alliance_noncore_fees_earned / self.total_fees_earned)
+    
+    def get_alliance_noncore_member_fee(self, pool_id: str) -> Decimal:
         noncore_pool = next((p for p in self.alliance_noncore_fee_data if p.pool_id == pool_id), None)
-        if not noncore_pool or self.alliance_noncore_fees_collected == 0:
+        if not noncore_pool or self.alliance_noncore_fees_earned == 0:
             return Decimal(0)
             
-        return (
-            noncore_pool.total_earned_fees_usd_twap / self.alliance_noncore_fees_collected
-            * self.alliance_noncore_fees_collected
-            * self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
-        )
+        alliance_noncore_collected = self._get_alliance_noncore_fees_collected()
+        pool_share = noncore_pool.total_earned_fees_usd_twap / self.alliance_noncore_fees_earned
+        return alliance_noncore_collected * pool_share * self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
 
     @staticmethod
     def _get_latest_snapshot(
@@ -564,7 +567,7 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def noncore_fees_collected(self) -> Decimal:
-        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_collected - self.partner_noncore_fees_collected, Decimal(0))
+        return max(self.fees_collected - self.total_earned_fees_usd_twap - self.alliance_noncore_fees_earned - self.partner_noncore_fees_earned, Decimal(0))
 
     @property
     @require_pool_fee_data
@@ -589,92 +592,101 @@ class CorePoolChain(AbstractCorePoolChain):
     @property
     @require_pool_fee_data
     def total_fees_earned(self) -> Decimal:
-        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_collected + self.partner_noncore_fees_collected
+        return self.total_earned_fees_usd_twap + self.noncore_fees_collected + self.alliance_noncore_fees_earned + self.partner_noncore_fees_earned
     
     @property
-    def alliance_noncore_fees_collected(self) -> Decimal:
+    def alliance_noncore_fees_earned(self) -> Decimal:
         return sum(pool.total_earned_fees_usd_twap for pool in self.alliance_noncore_fee_data)
 
     @property
     def alliance_noncore_to_dao_usd(self) -> Decimal:
         beets_factor = self.get_beets_factor()
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct * (1 - beets_factor)
+        return self._get_alliance_noncore_fees_collected() * self.chains.alliance_config.alliance_fee_allocations["non_core"].dao_share_pct * (1 - beets_factor)
 
     @property
     def alliance_noncore_to_vebal_usd(self) -> Decimal:
         beets_factor = self.get_beets_factor()
-        return self.alliance_noncore_fees_collected * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct  * (1 - beets_factor)
+        return self._get_alliance_noncore_fees_collected() * self.chains.alliance_config.alliance_fee_allocations["non_core"].vebal_share_pct  * (1 - beets_factor)
 
     @property
     def alliance_noncore_to_beets_usd(self) -> Decimal:
         beets_factor = self.get_beets_factor()
         if beets_factor == 0:
             return Decimal(0)
-        return self.alliance_noncore_fees_collected * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct) * beets_factor
+        return self._get_alliance_noncore_fees_collected() * (1 - self.chains.alliance_config.alliance_fee_allocations["non_core"].partner_share_pct) * beets_factor
     
     @property
-    def partner_noncore_fees_collected(self) -> Decimal:
+    def partner_noncore_fees_earned(self) -> Decimal:
         return sum(pool.total_earned_fees_usd_twap for pool in self.partner_noncore_fee_data)
     
+    def _get_partner_noncore_fees_collected(self) -> Decimal:
+        if self.partner_noncore_fees_earned == 0 or self.total_fees_earned == 0:
+            return Decimal(0)
+        return self.fees_collected * (self.partner_noncore_fees_earned / self.total_fees_earned)
+    
     def get_partner_noncore_fee(self, pool_id: str) -> Decimal:
-        """Get partner fee for a specific non-core partner pool"""
         noncore_pool = next((p for p in self.partner_noncore_fee_data if p.pool_id == pool_id), None)
-        if not noncore_pool or self.partner_noncore_fees_collected == 0:
+        if not noncore_pool or self.partner_noncore_fees_earned == 0:
             return Decimal(0)
         
-        # Find the partner and fee config for this pool
         partner_info = self.chains.alliance_config.get_partner_pool_config(pool_id, self.name, is_core=False)
         if not partner_info:
             return Decimal(0)
             
         _, fee_config = partner_info
-        return (
-            noncore_pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected
-            * self.partner_noncore_fees_collected
-            * fee_config.partner_share_pct
-        )
+        partner_noncore_collected = self._get_partner_noncore_fees_collected()
+        pool_share = noncore_pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
+        return partner_noncore_collected * pool_share * fee_config.partner_share_pct
     
     @property
     def partner_noncore_to_dao_usd(self) -> Decimal:
-        """DAO fees from partner non-core pools"""
         total = Decimal(0)
+        partner_noncore_collected = self._get_partner_noncore_fees_collected()
+        if partner_noncore_collected == 0:
+            return total
+            
+        beets_factor = self.get_beets_factor()
         for pool in self.partner_noncore_fee_data:
             partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
             if partner_info:
                 _, fee_config = partner_info
-                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
-                beets_factor = self.get_beets_factor()
-                total += self.partner_noncore_fees_collected * pool_share * fee_config.dao_share_pct * (1 - beets_factor)
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
+                total += partner_noncore_collected * pool_share * fee_config.dao_share_pct * (1 - beets_factor)
         return total
     
     @property
     def partner_noncore_to_vebal_usd(self) -> Decimal:
-        """veBAL fees from partner non-core pools"""
         total = Decimal(0)
+        partner_noncore_collected = self._get_partner_noncore_fees_collected()
+        if partner_noncore_collected == 0:
+            return total
+            
+        beets_factor = self.get_beets_factor()
         for pool in self.partner_noncore_fee_data:
             partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
             if partner_info:
                 _, fee_config = partner_info
-                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
-                beets_factor = self.get_beets_factor()
-                total += self.partner_noncore_fees_collected * pool_share * fee_config.vebal_share_pct * (1 - beets_factor)
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
+                total += partner_noncore_collected * pool_share * fee_config.vebal_share_pct * (1 - beets_factor)
         return total
     
     @property
     def partner_noncore_to_beets_usd(self) -> Decimal:
-        """Beets fees from partner non-core pools (Optimism only)"""
         beets_factor = self.get_beets_factor()
         if beets_factor == 0:
             return Decimal(0)
-        
+            
+        partner_noncore_collected = self._get_partner_noncore_fees_collected()
+        if partner_noncore_collected == 0:
+            return Decimal(0)
+            
         total = Decimal(0)
         for pool in self.partner_noncore_fee_data:
             partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
             if partner_info:
                 _, fee_config = partner_info
-                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_collected if self.partner_noncore_fees_collected > 0 else Decimal(0)
-                # Beets gets a share of the non-partner portion
-                total += self.partner_noncore_fees_collected * pool_share * (1 - fee_config.partner_share_pct) * beets_factor
+                pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
+                total += partner_noncore_collected * pool_share * (1 - fee_config.partner_share_pct) * beets_factor
         return total
 
     @property

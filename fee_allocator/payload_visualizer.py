@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich import box
 
 from bal_addresses import AddrBook
+from fee_allocator.constants import ALLIANCE_CONFIG_URL
 
 
 class PayloadVisualizer:
@@ -26,7 +27,7 @@ class PayloadVisualizer:
     ]
     
     # Transfer group types for method categorization
-    TRANSFER_GROUPS = ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers"]
+    TRANSFER_GROUPS = ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers", "Unknown Transfers"]
     
     def __init__(self):
         self.console = Console()
@@ -35,10 +36,7 @@ class PayloadVisualizer:
     
     def _load_fee_share_config(self) -> tuple[List[str], Dict[str, str], List[str], Dict[str, str]]:
         """Load alliance and partner addresses and names from GitHub config"""
-        response = requests.get(
-            "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/alliance_fee_share.json",
-            timeout=10
-        )
+        response = requests.get(ALLIANCE_CONFIG_URL, timeout=10)
         response.raise_for_status()
         config = response.json()
         
@@ -141,8 +139,9 @@ class PayloadVisualizer:
                 elif recipient in self.partner_addresses:
                     groups["Partner Transfers"].append(tx)
                 else:
-                    # Unknown recipient - this should not happen
-                    raise ValueError(f"Unknown transfer recipient: {recipient}. This address is not configured as an alliance member, partner, or known protocol address. Please update the configuration.")
+                    # Unknown recipient - add to a separate group instead of crashing
+                    groups["Unknown Transfers"].append(tx)
+                    print(f"Warning: Unknown transfer recipient: {recipient}. Adding to 'Unknown Transfers' group.")
             elif method == "approve":
                 groups["Token Approvals"].append(tx)
             else:
@@ -383,8 +382,7 @@ class PayloadVisualizer:
         """Get core pool fees from reconciliation data.
         """
         if recon_data and 'coreFees' in recon_data:
-            # Use actual core fees from reconciliation data
-            return Decimal(str(recon_data['coreFees'])) * Decimal('1e6')  # Convert to raw USDC units
+            return Decimal(str(recon_data['coreFees'])) * Decimal('1e6')
         else:
             # No recon data means we can't determine core fees
             return Decimal('0')
