@@ -32,18 +32,17 @@ class PoolFeeData:
     address: str
     symbol: str
     tokens_price: List[TWAPResult]
-    gauge_address: Optional[str]  # Can be None for pools without gauges
-    start_pool_snapshot: Optional[PoolSnapshot]  # Can be None for v3 or no-gauge pools
-    end_pool_snapshot: Optional[PoolSnapshot]  # Can be None for v3 or no-gauge pools
+    gauge_address: Optional[str]
+    start_pool_snapshot: Optional[PoolSnapshot]
+    end_pool_snapshot: Optional[PoolSnapshot]
     last_join_exit_ts: int
     protocol_version: int
     bpt_price: Decimal = field(default=Decimal(0))
     total_earned_fees_usd_twap: Decimal = None
-    # New fields for clean categorization
     pool_category: Optional[str] = None  # "core_with_gauge", "non_core_with_gauge", "non_core_without_gauge"
     fee_config: Optional[Union['AllianceFeeAllocation', 'PartnerFeeAllocation']] = None
-    partner: Optional['Partner'] = None  # Partner object if this is a partner pool
-    alliance_member: Optional[str] = None  # Alliance member name if this is an alliance pool
+    partner: Optional['Partner'] = None
+    alliance_member: Optional[str] = None
     is_alliance_pool: bool = field(default=False)
     is_alliance_non_core_pool: bool = field(default=False)
 
@@ -85,7 +84,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         chain (CorePoolChain): The core pool chain this pool belongs to.
     """
     def __init__(self, data: PoolFeeData, chain: CorePoolChain):
-        # copy over PoolFeeData attributes to self
         self.__dict__.update(vars(data))
         self.chain = chain
 
@@ -121,14 +119,11 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.chain.chains.alliance_config.get_pool_fee_config(self.pool_id, self.chain.name, True)
 
     def _is_alliance_non_core_pool(self) -> bool:
-        # Non-core status is determined during pool categorization
-        # If this is an alliance pool with non-core category, it's a non-core alliance pool
         if not self.is_alliance_pool:
             return False
         return self.pool_category != "core_with_gauge"
     
     def _check_if_partner_pool(self) -> bool:
-        # Partner information is now pre-set in PoolFeeData
         return self.partner is not None
 
     @property
@@ -137,7 +132,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         return self.is_alliance_pool and not self.is_alliance_non_core_pool
 
     def _get_partner_info(self):
-        # Partner information is now pre-set in PoolFeeData
         if self.partner:
             return (self.partner, self.fee_config)
         return None
@@ -185,7 +179,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         elif self.voting_pool_override and self.voting_pool_override != platform:
             return Decimal(0)
         
-        # Default split based on aura vebal share
         aura_share = self.chain.chains.aura_vebal_share
         return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
 
@@ -220,8 +213,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
     def _to_partner_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
 
-        # Only alliance and partner configs have partner_share_pct
-        # Regular fee configs don't have this field
         if self.alliance_member or self.partner:
             return (
                 self.earned_fee_share_of_chain_usd
