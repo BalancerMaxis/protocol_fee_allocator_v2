@@ -45,7 +45,6 @@ class AlliancePool(BaseModel):
     pool_id: str
     network: str
     partner: str
-    pool_type: str
     eligibility_date: str
     active: bool
 
@@ -94,16 +93,6 @@ class AllianceThresholds(BaseModel):
     v2_min_tvl: Decimal
 
 
-class PartnerPool(BaseModel):
-    """
-    Represents a pool that is part of a Partner program.
-    """
-    pool_id: str
-    network: str
-    eligibility_date: str
-    active: bool
-
-
 class PartnerFeeAllocation(BaseModel):
     """
     Represents the fee allocation configuration for Partner pools.
@@ -112,7 +101,7 @@ class PartnerFeeAllocation(BaseModel):
     vote_incentive_pct: Decimal | None = None  # Only for core pools
     partner_share_pct: Decimal
     dao_share_pct: Decimal
-    
+
     @validator('dao_share_pct')
     def validate_percentages(cls, v, values):
         # For core pools (vote_incentive_pct is not None), all percentages must sum to 1
@@ -128,6 +117,12 @@ class PartnerFeeAllocation(BaseModel):
         return v
 
 
+class PartnerFeeAllocations(BaseModel):
+    core_with_gauge: PartnerFeeAllocation
+    non_core_with_gauge: PartnerFeeAllocation
+    non_core_without_gauge: PartnerFeeAllocation
+
+
 class Partner(BaseModel):
     """
     Represents a partner in the fee sharing program.
@@ -136,21 +131,19 @@ class Partner(BaseModel):
     name: str
     multisig_address: str
     active: bool
-    pools: list[PartnerPool]
-    # Optional custom fee allocation - if not specified, uses default from partner_fee_allocations
-    custom_fee_allocation: PartnerFeeAllocation | None = None
+    pool_types: list[str]  # List of pool types this partner supports (e.g., ["QUANT_AMM_WEIGHTED"])
+    # Optional custom fee allocations - if not specified, uses default from PartnerConfig
+    fee_allocations: PartnerFeeAllocations | None = None
 
 
 class AllianceConfig(BaseModel):
     """
-    Represents the complete Alliance configuration including members and fee allocations.
-    Models the data sourced from the ALLIANCE_CONSTANTS_URL endpoint.
+    Represents the Alliance configuration including members and fee allocations.
+    Models the data sourced from the ALLIANCE_CONFIG_URL endpoint.
     """
     alliance_members: list[AllianceMember]
     alliance_fee_allocations: dict[str, AllianceFeeAllocation]
     alliance_thresholds: AllianceThresholds
-    partners: list[Partner] | None = None
-    partner_fee_allocations: dict[str, PartnerFeeAllocation] | None = None
 
     def get_pool_fee_config(self, pool_id: str, network: str, is_core: bool) -> AllianceFeeAllocation | None:
         """
@@ -162,26 +155,30 @@ class AllianceConfig(BaseModel):
                 if pool.pool_id == pool_id and pool.network == network and pool.active:
                     return self.alliance_fee_allocations["core" if is_core else "non_core"]
         return None
-    
-    def get_partner_pool_config(self, pool_id: str, network: str, is_core: bool = True) -> tuple[Partner, PartnerFeeAllocation] | None:
+
+
+class PartnerConfig(BaseModel):
+    """
+    Represents the Partner configuration including partners and their fee allocations.
+    Models the data sourced from the PARTNER_CONFIG_URL endpoint.
+    """
+    partners: list[Partner]
+    default_fee_allocations: PartnerFeeAllocations
+
+    def get_partner_fee_config(self, partner_name: str, pool_type: str) -> PartnerFeeAllocation:
         """
-        Returns the partner and fee allocation configuration for a specific pool if it's part of a Partner program.
-        Returns None if the pool is not part of any Partner program.
+        Returns the fee allocation for a partner and pool type.
+        Falls back to default if partner doesn't have custom allocations.
+
+        Args:
+            partner_name: Name of the partner
+            pool_type: One of "core_with_gauge", "non_core_with_gauge", "non_core_without_gauge"
         """
-        if not self.partners:
-            return None
-            
         for partner in self.partners:
-            if not partner.active:
-                continue
-            for pool in partner.pools:
-                if pool.pool_id == pool_id and pool.network == network and pool.active:
-                    # Use custom fee allocation if specified, otherwise use default
-                    if partner.custom_fee_allocation:
-                        return partner, partner.custom_fee_allocation
-                    elif self.partner_fee_allocations:
-                        if is_core and "default" in self.partner_fee_allocations:
-                            return partner, self.partner_fee_allocations["default"]
-                        elif not is_core and "default_non_core" in self.partner_fee_allocations:
-                            return partner, self.partner_fee_allocations["default_non_core"]
-        return None
+            if partner.name == partner_name and partner.active:
+                if partner.fee_allocations:
+                    return getattr(partner.fee_allocations, pool_type)
+                else:
+                    return getattr(self.default_fee_allocations, pool_type)
+        return getattr(self.default_fee_allocations, pool_type)
+    

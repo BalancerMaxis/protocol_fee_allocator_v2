@@ -1,5 +1,6 @@
 FEE_CONSTANTS_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/protocol_fees_constants.json"
-ALLIANCE_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/alliance_fee_share.json"
+ALLIANCE_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/32ed81f57d39e84acdb54bd1e630ba1f0af6c51c/config/alliance_fee_share.json"
+PARTNER_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/32ed81f57d39e84acdb54bd1e630ba1f0af6c51c/config/partner_fee_share.json"
 POOL_OVERRIDES_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/pool_incentives_overrides.json"
 SNAPSHOT_URL = "https://hub.snapshot.org/graphql?"
 HH_API_URL = "https://api.hiddenhand.finance/proposal"
