@@ -61,6 +61,7 @@ class CorePoolRunConfig:
         core_pools: Dict[str, Dict[str, str]] = None,
         protocol_version: str = "v2",
     ):
+        # convert wei fees to usd. identified by the lack of a decimal point
         self.input_fees = {chain: fee / 1e6 if isinstance(fee, int) else fee for chain, fee in input_fees.items()}
         self.date_range = date_range
         self.w3_by_chain = Web3RpcByChain(os.environ["DRPC_KEY"])
@@ -75,6 +76,7 @@ class CorePoolRunConfig:
             for pool_id, override_data in pool_overrides_raw.items()
         }
 
+        # caches a list of `PoolFeeData` for each chain
         self.use_cache = use_cache
         self.cache_dir = cache_dir if cache_dir else Path(__file__).parent / "cache"
         self.cache_dir.mkdir(exist_ok=True)
@@ -248,24 +250,29 @@ class CorePoolChain(AbstractCorePoolChain):
             
             if tvl_threshold == 0:
                 self.alliance_pools.append(pool)
-                logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as alliance pool")
+                logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
                 continue
-
+            
             try:
                 tvl = self.bal_pools_gauges.get_pool_tvl(pool.pool_id)
                 if tvl >= tvl_threshold:
                     self.alliance_pools.append(pool)
-                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as alliance pool")
+                    logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as partner pool")
                 else:
                     logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} skipped - TVL ${tvl:,.2f} below ${tvl_threshold:,.2f} threshold")
             except Exception as e:
                 logger.error(f"Failed to get TVL for v{protocol_version} Alliance pool {pool.pool_id}: {e}")
     
-    def _fetch_partner_pools(self) -> Dict[str, Partner]:
+    def _fetch_partner_pools_dynamically(self) -> Dict[str, Partner]:
         """
-        Fetch partner pools from subgraph using pool types.
+        Dynamically fetch partner pools from subgraph using pool types.
         Returns a mapping of pool_id -> Partner
         """
+        # Hardcoded mapping for now - could be moved to config later
+        partner_pool_types = {
+            "QuantAMM": "QUANT_AMM_WEIGHTED"
+        }
+
         partner_pools_by_id = {}
         allocator_version = int(self.chains.protocol_version.replace("v", ""))
 
@@ -273,26 +280,28 @@ class CorePoolChain(AbstractCorePoolChain):
             if not partner.active:
                 continue
 
-            if not partner.pool_types:
-                logger.warning(f"No pool types defined for partner {partner.name}")
+            pool_type = partner_pool_types.get(partner.name)
+            if not pool_type:
+                logger.warning(f"No pool type mapping for partner {partner.name}")
                 continue
 
-            for pool_type in partner.pool_types:
-                pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
-                logger.info(f"Found {len(pool_ids)} {pool_type} pools for {partner.name} on {self.name}")
+            # Fetch pools of this type on this chain
+            pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
+            logger.info(f"Found {len(pool_ids)} {partner.name} pools on {self.name}")
 
-                for pool_id in pool_ids:
-                    try:
-                        protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
-                        if protocol_version == allocator_version:
-                            partner_pools_by_id[pool_id] = partner
-                            logger.info(f"v{protocol_version} Partner pool {pool_id} from {partner.name} added")
-                    except Exception as e:
-                        logger.warning(f"Failed to get protocol version for pool {pool_id}: {e}")
+            for pool_id in pool_ids:
+                # Verify protocol version matches
+                try:
+                    protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
+                    if protocol_version == allocator_version:
+                        partner_pools_by_id[pool_id] = partner
+                        logger.info(f"v{protocol_version} Partner pool {pool_id} from {partner.name} added")
+                except Exception as e:
+                    logger.warning(f"Failed to get protocol version for pool {pool_id}: {e}")
 
         return partner_pools_by_id
 
-    def _get_pool_category(self, has_gauge: bool, is_core: bool) -> Optional[str]:
+    def _determine_pool_category(self, has_gauge: bool, is_core: bool) -> Optional[str]:
         """
         Determine pool category for fee allocation.
 
@@ -310,8 +319,9 @@ class CorePoolChain(AbstractCorePoolChain):
             return None
         return None
 
-    def _get_fee_config(
+    def _get_fee_config_for_pool(
         self,
+        pool_id: str,
         pool_category: str,
         alliance_pool: Optional[AlliancePool] = None,
         partner: Optional[Partner] = None
@@ -320,13 +330,16 @@ class CorePoolChain(AbstractCorePoolChain):
         Get the appropriate fee configuration for a pool based on its category and source.
         """
         if alliance_pool:
+            # Alliance pools use simple core/non_core split
             if pool_category == "core_with_gauge":
                 return self.chains.alliance_config.alliance_fee_allocations["core"]
             else:
                 return self.chains.alliance_config.alliance_fee_allocations["non_core"]
         elif partner:
+            # Partner pools use 3-way split
             return self.chains.partner_config.get_partner_fee_config(partner.name, pool_category)
         else:
+            # Regular pools use global config - return None to use default logic
             return None
 
     def set_pool_fee_data(self):
@@ -353,7 +366,7 @@ class CorePoolChain(AbstractCorePoolChain):
         cached_data = joblib.load(self._cache_file_path())
         self.alliance_pools = cached_data.get('alliance_pools', [])
         self.alliance_noncore_fee_data = cached_data.get('alliance_noncore_fee_data', [])
-        self.partner_pools_map = cached_data.get('partner_pools_map', {})
+        self.partner_pools = cached_data.get('partner_pools', [])
         self.partner_noncore_fee_data = cached_data.get('partner_noncore_fee_data', [])
         return cached_data.get('pool_fee_data', [])
 
@@ -362,7 +375,7 @@ class CorePoolChain(AbstractCorePoolChain):
             'pool_fee_data': pool_data,
             'alliance_pools': self.alliance_pools,
             'alliance_noncore_fee_data': self.alliance_noncore_fee_data,
-            'partner_pools_map': self.partner_pools_map,
+            'partner_pools': self.partner_pools,
             'partner_noncore_fee_data': self.partner_noncore_fee_data
         }
         joblib.dump(cache_data, self._cache_file_path())
@@ -372,15 +385,19 @@ class CorePoolChain(AbstractCorePoolChain):
         Fetches pool data and categorizes each pool ONCE with appropriate fee configs.
         Returns core pools list and populates non-core lists.
         """
+        # Initialize alliance pools (static from config)
         self._init_alliance_pools()
 
-        self.partner_pools_map = self._fetch_partner_pools()
+        # Fetch partner pools dynamically
+        self.partner_pools_map = self._fetch_partner_pools_dynamically()
 
+        # Early exit if no pools to process
         if not self.bal_pools_gauges.core_pools and not self.alliance_pools and not self.partner_pools_map:
             return []
 
         logger.info(f"Processing pools for {self.name}")
 
+        # Get snapshots for v2 pools
         start_snaps = None
         end_snaps = None
         if self.chains.protocol_version == "v2":
@@ -391,13 +408,17 @@ class CorePoolChain(AbstractCorePoolChain):
                 block=self.block_range[1], pools_per_req=1000, limit=5000
             )
 
+        # Get gauge mapping
         pools = self.subgraph.fetch_all_pools_info()
         pool_to_gauge = self._create_pool_to_gauge_mapping(pools)
 
+        # Get original core pools for categorization
         original_core_pool_ids = set(pool_id for pool_id, _ in self.bal_pools_gauges.core_pools)
 
+        # Collect all unique pools to process with metadata
         all_pools = {}
 
+        # Add core pools
         core_pools_list = (
             [(pool_id, label) for pool_id, label in self.core_pools_list.items()]
             if self.core_pools_list is not None
@@ -411,117 +432,66 @@ class CorePoolChain(AbstractCorePoolChain):
                 'partner': None
             }
 
-        for alliance_pool in self.alliance_pools:
-            if alliance_pool.pool_id not in all_pools:
-                all_pools[alliance_pool.pool_id] = {
-                    'label': alliance_pool.partner,
-                    'source': 'alliance',
-                    'alliance_pool': alliance_pool,
-                    'partner': None
-                }
-            else:
-                all_pools[alliance_pool.pool_id]['alliance_pool'] = alliance_pool
-                all_pools[alliance_pool.pool_id]['source'] = 'alliance'
+        for pool_id, label in core_pools_list:
+            protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
 
-        for pool_id, partner in self.partner_pools_map.items():
-            if pool_id not in all_pools:
-                all_pools[pool_id] = {
-                    'label': f"Partner:{partner.name}",
-                    'source': 'partner',
-                    'alliance_pool': None,
-                    'partner': partner
-                }
-            else:
-                all_pools[pool_id]['partner'] = partner
-                if all_pools[pool_id]['source'] != 'alliance':
-                    all_pools[pool_id]['source'] = 'partner'
-
-        pools_data = []
-
-        for pool_id, pool_info in all_pools.items():
-            try:
-                protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
-
-                allocator_version = int(self.chains.protocol_version.replace("v", ""))
-                if protocol_version != allocator_version:
+            if protocol_version == 3 and self.chains.protocol_version == "v3":
+                pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(pool_id, label, pool_to_gauge)
+                if pool_fee_data is None:
                     continue
 
-                has_gauge = pool_id in pool_to_gauge
-                is_core = pool_id in original_core_pool_ids
-
-                pool_category = self._get_pool_category(has_gauge, is_core)
-                if not pool_category:
-                    logger.warning(f"Invalid category for pool {pool_id}: core={is_core}, gauge={has_gauge}")
-                    continue
-
-                fee_config = self._get_fee_config(
-                    pool_category,
-                    pool_info['alliance_pool'],
-                    pool_info['partner']
-                )
-
-                pool_fee_data = None
-
-                if protocol_version == 3:
-                    if has_gauge:
-                        pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v3(
-                            pool_id, pool_info['label'], pool_to_gauge
-                        )
-                    else:
-                        pool_fee_data = self._create_v3_pool_without_gauge(
-                            pool_id, pool_info['label']
-                        )
-                else:  # v2
-                    if has_gauge:
-                        start_snap = self._get_latest_snapshot(start_snaps, pool_id)
-                        end_snap = self._get_latest_snapshot(end_snaps, pool_id)
-
-                        should_add = (
-                            pool_info['alliance_pool'] or
-                            pool_info['partner'] or
-                            self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge)
-                        )
-
-                        if should_add:
-                            pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(
-                                pool_id, pool_info['label'], pool_to_gauge, start_snap, end_snap
-                            )
-                    else:
-                        start_snap = self._get_latest_snapshot(start_snaps, pool_id) if start_snaps else None
-                        end_snap = self._get_latest_snapshot(end_snaps, pool_id) if end_snaps else None
-                        pool_fee_data = self._create_v2_pool_without_gauge(
-                            pool_id, pool_info['label'], start_snap, end_snap
-                        )
-
-                if not pool_fee_data:
-                    continue
-
-                pool_fee_data.pool_category = pool_category
-                pool_fee_data.fee_config = fee_config
-                pool_fee_data.partner = pool_info['partner']
-                pool_fee_data.alliance_member = pool_info['alliance_pool'].partner if pool_info['alliance_pool'] else None
-
-                if pool_category == "core_with_gauge":
-                    pools_data.append(pool_fee_data)
-                else:
-                    if pool_info['source'] == 'alliance':
-                        self.alliance_noncore_fee_data.append(pool_fee_data)
-                    elif pool_info['source'] == 'partner':
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                partner_pool = next((p for p in self.partner_pools if p.pool_id == pool_id), None)
+                
+                # Check if this is a non-core pool (either alliance or partner)
+                is_non_core = False
+                if alliance_pool and alliance_pool.pool_type != "core":
+                    self.alliance_noncore_fee_data.append(pool_fee_data)
+                    is_non_core = True
+                elif partner_pool:
+                    # Partner pools can be in core pools list or not
+                    # If it's not in the original core pools list, it's non-core
+                    original_core_pool_ids = [pool_id for pool_id, _ in self.bal_pools_gauges.core_pools]
+                    if pool_id not in original_core_pool_ids:
                         self.partner_noncore_fee_data.append(pool_fee_data)
-                    else:
-                        logger.warning(f"Non-core pool {pool_id} without alliance/partner association")
+                        is_non_core = True
+                
+                if not is_non_core:
+                    pools_data.append(pool_fee_data)
 
-            except Exception as e:
-                logger.error(f"Failed to process pool {pool_id}: {e}")
-                continue
-
-        logger.info(f"Processed {len(pools_data)} core pools, "
-                    f"{len(self.alliance_noncore_fee_data)} alliance non-core, "
-                    f"{len(self.partner_noncore_fee_data)} partner non-core pools")
+            elif protocol_version == 2 and self.chains.protocol_version == "v2":
+                start_snap = self._get_latest_snapshot(start_snaps, pool_id)
+                end_snap = self._get_latest_snapshot(end_snaps, pool_id)
+                alliance_pool = next((p for p in self.alliance_pools if p.pool_id == pool_id), None)
+                partner_pool = next((p for p in self.partner_pools if p.pool_id == pool_id), None)
+                
+                # Partner pools bypass _should_add_pool check
+                if alliance_pool or partner_pool or self._should_add_pool(pool_id, start_snap, end_snap, pool_to_gauge):
+                    pool_fee_data = self._fetch_twap_prices_and_init_pool_fee_data_v2(pool_id, label, pool_to_gauge, start_snap, end_snap)
+                    if pool_fee_data is None:
+                        continue
+                    
+                    is_non_core = False
+                    if alliance_pool and alliance_pool.pool_type != "core":
+                        self.alliance_noncore_fee_data.append(pool_fee_data)
+                        is_non_core = True
+                    elif partner_pool:
+                        # Partner pools can be in core pools list or not
+                        # If it's not in the original core pools list, it's non-core
+                        original_core_pool_ids = [pool_id for pool_id, _ in self.bal_pools_gauges.core_pools]
+                        if pool_id not in original_core_pool_ids:
+                            self.partner_noncore_fee_data.append(pool_fee_data)
+                            is_non_core = True
+                    
+                    if not is_non_core:
+                        pools_data.append(pool_fee_data)
 
         return pools_data
 
     def _create_pool_to_gauge_mapping(self, pools: list[Pool]) -> Dict[str, str]:
+        """
+        create a mapping of pool id to gauge address from the vebal_get_voting_list query
+        """
         pool_to_gauge = {}
         for pool in pools:
             if pool.gauge.isKilled:
@@ -541,7 +511,7 @@ class CorePoolChain(AbstractCorePoolChain):
             and pool_to_gauge.get(pool_id)
         )
 
-    def _create_v2_pool_without_gauge(
+    def _create_pool_fee_data_no_gauge_v2(
         self,
         pool_id: str,
         label: str,
@@ -622,7 +592,7 @@ class CorePoolChain(AbstractCorePoolChain):
             protocol_version=2,
         )
        
-    def _create_v3_pool_without_gauge(
+    def _create_pool_fee_data_no_gauge_v3(
         self,
         pool_id: str,
         label: str,
@@ -794,13 +764,15 @@ class CorePoolChain(AbstractCorePoolChain):
         noncore_pool = next((p for p in self.partner_noncore_fee_data if p.pool_id == pool_id), None)
         if not noncore_pool or self.partner_noncore_fees_earned == 0:
             return Decimal(0)
-
-        if not noncore_pool.fee_config:
+        
+        partner_info = self.chains.alliance_config.get_partner_pool_config(pool_id, self.name, is_core=False)
+        if not partner_info:
             return Decimal(0)
-
+            
+        _, fee_config = partner_info
         partner_noncore_collected = self._get_partner_noncore_fees_collected()
         pool_share = noncore_pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
-        return partner_noncore_collected * pool_share * noncore_pool.fee_config.partner_share_pct
+        return partner_noncore_collected * pool_share * fee_config.partner_share_pct
     
     @property
     def partner_noncore_to_dao_usd(self) -> Decimal:
@@ -808,12 +780,14 @@ class CorePoolChain(AbstractCorePoolChain):
         partner_noncore_collected = self._get_partner_noncore_fees_collected()
         if partner_noncore_collected == 0:
             return total
-
+            
         beets_factor = self.get_beets_factor()
         for pool in self.partner_noncore_fee_data:
-            if pool.fee_config:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
                 pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
-                total += partner_noncore_collected * pool_share * pool.fee_config.dao_share_pct * (1 - beets_factor)
+                total += partner_noncore_collected * pool_share * fee_config.dao_share_pct * (1 - beets_factor)
         return total
     
     @property
@@ -822,12 +796,14 @@ class CorePoolChain(AbstractCorePoolChain):
         partner_noncore_collected = self._get_partner_noncore_fees_collected()
         if partner_noncore_collected == 0:
             return total
-
+            
         beets_factor = self.get_beets_factor()
         for pool in self.partner_noncore_fee_data:
-            if pool.fee_config:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
                 pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
-                total += partner_noncore_collected * pool_share * pool.fee_config.vebal_share_pct * (1 - beets_factor)
+                total += partner_noncore_collected * pool_share * fee_config.vebal_share_pct * (1 - beets_factor)
         return total
     
     @property
@@ -835,16 +811,18 @@ class CorePoolChain(AbstractCorePoolChain):
         beets_factor = self.get_beets_factor()
         if beets_factor == 0:
             return Decimal(0)
-
+            
         partner_noncore_collected = self._get_partner_noncore_fees_collected()
         if partner_noncore_collected == 0:
             return Decimal(0)
-
+            
         total = Decimal(0)
         for pool in self.partner_noncore_fee_data:
-            if pool.fee_config:
+            partner_info = self.chains.alliance_config.get_partner_pool_config(pool.pool_id, self.name, is_core=False)
+            if partner_info:
+                _, fee_config = partner_info
                 pool_share = pool.total_earned_fees_usd_twap / self.partner_noncore_fees_earned
-                total += partner_noncore_collected * pool_share * (1 - pool.fee_config.partner_share_pct) * beets_factor
+                total += partner_noncore_collected * pool_share * (1 - fee_config.partner_share_pct) * beets_factor
         return total
 
     @property
