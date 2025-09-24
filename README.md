@@ -37,17 +37,27 @@ Optional (but recommended for deterministic block fetching and reproducible resu
 
 ### Running the Allocator
 
+#### Combined Mode (Recommended for biweekly runs)
 ```bash
-# Basic run (uses default timestamps - last 2 weeks from odd Thursday, default protocol version v2)
-python main.py
+# Run both v2 and v3 allocations with automatic payload merging
+python main_combined.py
 
 # Run with specific timestamps
-python main.py --ts_now <end_timestamp> --ts_in_the_past <start_timestamp>
+python main_combined.py --ts_now <end_timestamp> --ts_in_the_past <start_timestamp>
+
+# Run with specific date range string
+python main_combined.py --date_range_string 2025-04-24_2025-05-08
+```
+
+#### Single Protocol Version
+```bash
+# Basic run (uses default timestamps - last 2 weeks from odd Thursday)
+python main.py
 
 # Run with specific protocol version (v2 or v3)
 python main.py --protocol_version v3
 
-# Run with custom fee input and output file names
+# Run with custom output file names
 python main.py --fees_file_name v2_fees_2025-04-24_2025-05-08.json --output_file_name v2_incentives_2025-04-24_2025-05-08.csv
 
 # Full example for v2
@@ -57,23 +67,9 @@ python main.py \
   --fees_file_name v2_fees_2025-04-24_2025-05-08.json \
   --output_file_name v2_incentives_2025-04-24_2025-05-08.csv \
   --protocol_version v2
-
-# Full example for v3
-python main.py \
-  --ts_now 1715270400 \
-  --ts_in_the_past 1714060800 \
-  --fees_file_name v3_fees_2025-04-24_2025-05-08.json \
-  --output_file_name v3_incentives_2025-04-24_2025-05-08.csv \
-  --protocol_version v3
 ```
 
-> **Note:** The allocator automatically searches for corresponding fee input files in `fee_allocator/fees_collected/` based on the timestamps provided. If no custom fee file is specified, it constructs the filename using the pattern `{protocol}_fees_{start_date}_{end_date}.json`.
 
-### Combining V2 and V3 Payloads
-```bash
-# After running both v2 and v3 allocations, combine the payloads
-python combine_payloads.py --payload_file_name v2_fees_2025-05-08.json
-```
 
 ### Testing
 ```bash
@@ -94,12 +90,13 @@ python -m pytest -s
 
 2. **Fee Allocation**: When fee files are merged, allocation is automatically triggered
    - Workflow: `.github/workflows/trigger_fee_collection.yaml`
-   - Runs allocation for both v2 and v3
-   - Combines payloads into single file
+   - Runs combined allocation for both v2 and v3 using `main_combined.py`
+   - Automatically merges payloads and deduplicates transfers
 
 3. **Manual Collection**: Can be triggered manually for specific dates
    - Workflow: `.github/workflows/collect_fees.yaml`
-   - Specify end date and protocol version
+   - Runs single protocol version allocation
+   - Specify end date and protocol version (v2 or v3)
 
 ## Output Files
 
@@ -116,6 +113,10 @@ The allocator generates several output files:
 - **Non-core pool CSVs**: `fee_allocator/allocations/noncore/`
   - `v2_noncore_<start>_<end>.csv`
   - `v3_noncore_<start>_<end>.csv`
+
+- **Partner CSVs**: `fee_allocator/allocations/partner/`
+  - `v2_partner_<start>_<end>.csv`
+  - `v3_partner_<start>_<end>.csv`
 
 - **Payloads**: `fee_allocator/payloads/`
   - `v2_<date>.json` - Safe transaction payload for v2
@@ -137,8 +138,9 @@ The allocator generates several output files:
   - `payloads/` - Safe transaction payloads
   - `summaries/` - Reconciliation reports
 - `tests/` - Test suite
-- `main.py` - CLI entry point
-- `combine_payloads.py` - Utility to merge v2/v3 payloads
+- `main.py` - CLI entry point for single protocol runs
+- `main_combined.py` - CLI entry point for combined v2+v3 runs
+- `combine_payloads.py` - Utility to merge v2/v3 payloads with deduplication
 
 ## Branch Strategy
 

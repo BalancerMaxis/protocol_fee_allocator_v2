@@ -8,9 +8,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -28,5 +31,11 @@ jobs:
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          EXPLORER_API_KEY_MAINNET: ${{ secrets.EXPLORER_API_KEY_MAINNET }}
+          EXPLORER_API_KEY_ARBITRUM: ${{ secrets.EXPLORER_API_KEY_ARBITRUM }}
+          EXPLORER_API_KEY_POLYGON: ${{ secrets.EXPLORER_API_KEY_POLYGON }}
+          EXPLORER_API_KEY_BASE: ${{ secrets.EXPLORER_API_KEY_BASE }}
+          EXPLORER_API_KEY_GNOSIS: ${{ secrets.EXPLORER_API_KEY_GNOSIS }}
         run: |
           python -m pytest -v -s --timeout=300

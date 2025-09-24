@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import Tuple, Optional
 import pytz
 import requests
 from fee_allocator.constants import HH_API_URL
@@ -9,26 +9,12 @@ from dotenv import load_dotenv
 import json
 
 
-
-if TYPE_CHECKING:
-    from fee_allocator.accounting.chains import CorePoolChain
-
-
 load_dotenv()
-
-EXPLORER_URLS = {
-    "mainnet": "https://api.etherscan.io/api",
-    "arbitrum": "https://api.arbiscan.io/api",
-    "polygon": "https://api.polygonscan.com/api",
-    "gnosis": "https://api.gnosisscan.io/api",
-    "avalanche": "https://api.snowtrace.io/api",
-    "base": "https://api.basescan.org/api",
-}
 
 
 def get_last_thursday_odd_week():
     # Use the current UTC date and time
-    current_datetime = datetime.utcnow().replace(tzinfo=pytz.utc)
+    current_datetime = datetime.now(pytz.UTC)
 
     # Calculate the difference between the current weekday and Thursday (where Monday is 0 and Sunday is 6)
     days_since_thursday = (current_datetime.weekday() - 3) % 7
@@ -68,35 +54,6 @@ def get_hh_aura_target(target: str) -> str:
     return False
 
 
-def get_block_by_ts(timestamp, chain: "CorePoolChain", before=False):
-    try:
-        api_key = os.getenv(f"EXPLORER_API_KEY_{chain.name.upper()}")
-        explorer_url = EXPLORER_URLS.get(chain.name)
-        if not api_key or not explorer_url:
-            raise KeyError
-    except KeyError:
-        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
-
-    params = {
-        "module": "block",
-        "action": "getblocknobytime",
-        "timestamp": timestamp,
-        "closest": "before" if before else "after",
-        "apikey": api_key,
-    }
-
-    response = requests.get(explorer_url, params=params)
-    try:
-        response.raise_for_status()
-    except requests.exceptions.HTTPError:
-        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
-
-    data = response.json()
-
-    if data["status"] == "1" and data["message"] == "OK":
-        return int(data["result"])
-    else:
-        return chain.subgraph.get_first_block_after_utc_timestamp(timestamp)
 
 def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None, protocol_version: str = "v2") -> dict:
     # If fees_file_name is provided, use that directly, else derive it from the start and end date
@@ -109,5 +66,41 @@ def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = N
     if os.path.exists(local_path):
         with open(local_path) as f:
             return json.load(f)
+        
+    raise FileNotFoundError(f"could not find input fees file at {local_path}")
 
-    raise FileNotFoundError(f"Could not find fees file {filename}")
+
+def parse_date_inputs(
+    date_range_string: Optional[str] = None, 
+    ts_now: Optional[int] = None, 
+    ts_in_the_past: Optional[int] = None
+) -> Tuple[int, int, str, str]:
+    now = datetime.now(pytz.UTC)
+    DELTA = 6000
+    default_ts_now = int(now.timestamp()) - DELTA
+    default_ts_past = int(get_last_thursday_odd_week().timestamp())
+    
+    if date_range_string:
+        try:
+            start_date_str, end_date_str = date_range_string.split('_')
+            # Parse dates to ensure they're valid
+            start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=pytz.UTC)
+            
+            # Convert to timestamps
+            ts_in_the_past = int(start_dt.timestamp())
+            ts_now = int(end_dt.timestamp())
+            
+            return ts_in_the_past, ts_now, start_date_str, end_date_str
+        except ValueError:
+            raise ValueError(f"Invalid date_range_string format. Expected YYYY-MM-DD_YYYY-MM-DD, got: {date_range_string}")
+    else:
+        # Use timestamps if provided, otherwise use defaults
+        ts_now = ts_now or default_ts_now
+        ts_in_the_past = ts_in_the_past or default_ts_past
+        
+        start_date = datetime.fromtimestamp(ts_in_the_past, tz=pytz.UTC).strftime("%Y-%m-%d")
+        end_date = datetime.fromtimestamp(ts_now, tz=pytz.UTC).strftime("%Y-%m-%d")
+        
+        return ts_in_the_past, ts_now, start_date, end_date
+

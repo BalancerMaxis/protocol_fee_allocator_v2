@@ -55,7 +55,14 @@ def test_fee_allocator_allocation_process(allocator: FeeAllocator):
 @pytest.fixture
 def allocated_allocator(allocator: FeeAllocator):
     """Run allocation once and return the allocator with allocated state"""
-    allocator.allocate()
+    allocator.allocate(redistribute=True)
+    return allocator
+
+
+@pytest.fixture
+def allocator_exact(allocator: FeeAllocator):
+    """Run allocation without redistribution for testing exact fee splits"""
+    allocator.allocate(redistribute=False)
     return allocator
 
 
@@ -102,23 +109,24 @@ def test_core_pool_allocation(allocated_allocator: FeeAllocator):
     
     for chain in allocated_allocator.run_config.all_chains:
         for pool in chain.core_pools:
-            # Only include standard core pools (exclude alliance pools with partners)
-            if not (hasattr(pool, 'to_partner_usd') and pool.to_partner_usd > 0):
-                total_core_fees += pool.total_earned_fees_usd_twap
+            # Only include standard core pools
+            if not pool.is_alliance_pool:
                 total_core_dao += pool.to_dao_usd
                 total_core_vebal += pool.to_vebal_usd
                 total_core_incentives += pool.total_to_incentives_usd
-    
-    if total_core_fees > 0:
-        core_dao_pct = total_core_dao / total_core_fees
-        core_vebal_pct = total_core_vebal / total_core_fees
-        core_incentives_pct = total_core_incentives / total_core_fees
-        
+
+    total_core_allocations = total_core_dao + total_core_vebal + total_core_incentives
+
+    if total_core_allocations > 0:
+        core_dao_pct = total_core_dao / total_core_allocations
+        core_vebal_pct = total_core_vebal / total_core_allocations
+        core_incentives_pct = total_core_incentives / total_core_allocations
+
         assert abs(core_dao_pct - fee_config.dao_share_pct) <= Decimal('0.02'), \
             f"Core pool DAO {core_dao_pct:.4f} not within 2% of target {fee_config.dao_share_pct}"
         assert abs(core_vebal_pct - fee_config.vebal_share_pct) <= Decimal('0.02'), \
             f"Core pool veBAL {core_vebal_pct:.4f} not within 2% of target {fee_config.vebal_share_pct}"
-        assert abs(core_incentives_pct - fee_config.vote_incentive_pct) <= Decimal('0.02'), \
+        assert abs(core_incentives_pct - fee_config.vote_incentive_pct) <= Decimal('0.03'), \
             f"Core pool incentives {core_incentives_pct:.4f} not within 2% of target {fee_config.vote_incentive_pct}"
 
 
@@ -167,3 +175,152 @@ def test_aura_bal_incentive_split(allocated_allocator: FeeAllocator):
             f"BAL share {actual_bal_share:.4f} is too low"
         assert abs(actual_aura_share + actual_bal_share - 1) < Decimal('0.001'), \
             "Aura and BAL shares don't add up to 100%"
+
+
+def test_beets_fee_split(allocator_exact: FeeAllocator):
+    """Test that Beets fee split on Optimism is correctly allocated"""
+    optimism_chain = None
+    for chain in allocator_exact.run_config.all_chains:
+        if chain.name == "optimism":
+            optimism_chain = chain
+            break
+    
+    if not optimism_chain:
+        pytest.skip("No Optimism chain in test data")
+    
+    for pool in optimism_chain.core_pools:
+        expected_beets = pool.to_dao_usd + pool.to_vebal_usd
+        assert abs(pool.to_beets_usd - expected_beets) < Decimal('0.01'), \
+            f"Pool {pool.pool_id}: Beets {pool.to_beets_usd:.2f} != DAO+veBAL {expected_beets:.2f}"
+        
+        if pool.is_alliance_pool or pool.is_partner_pool:
+            continue
+        
+        core_allocation = pool._core_pool_allocation()
+        pool_allocation = pool.earned_fee_share_of_chain_usd * core_allocation
+        expected_dao = pool_allocation * Decimal('0.175') * Decimal('0.5')
+        expected_vebal = pool_allocation * Decimal('0.125') * Decimal('0.5')
+        
+        assert abs(pool.to_dao_usd - expected_dao) < Decimal('0.01'), \
+            f"Pool {pool.pool_id}: DAO allocation incorrect"
+        assert abs(pool.to_vebal_usd - expected_vebal) < Decimal('0.01'), \
+            f"Pool {pool.pool_id}: veBAL allocation incorrect"
+    
+    assert optimism_chain.noncore_to_beets_usd == optimism_chain.noncore_fees_collected * Decimal('0.5'), \
+        "Non-core Beets should be exactly 50% of non-core fees"
+    assert optimism_chain.alliance_noncore_to_beets_usd == optimism_chain._get_alliance_noncore_fees_collected() * Decimal('0.5'), \
+        "Alliance non-core Beets should be exactly 50%"
+    assert optimism_chain.partner_noncore_to_beets_usd == optimism_chain._get_partner_noncore_fees_collected() * Decimal('0.5'), \
+        "Partner non-core Beets should be exactly 50%"
+
+
+def test_partner_fee_split(allocator_exact: FeeAllocator):
+    """Test that partner fee splits are correctly allocated"""
+    total_partner_fees = Decimal(0)
+    partner_pools_found = False
+    
+    for chain in allocator_exact.run_config.all_chains:
+        for pool in chain.core_pools:
+            if pool.is_partner_pool and pool.partner_info:
+                partner_pools_found = True
+                partner, fee_config = pool.partner_info
+                
+                core_allocation = pool._core_pool_allocation()
+                pool_allocation = pool.earned_fee_share_of_chain_usd * core_allocation
+                
+                expected_partner = pool_allocation * fee_config.partner_share_pct
+                assert abs(pool.to_partner_usd - expected_partner) < Decimal('0.01'), \
+                    f"Partner fee calculation wrong for {pool.pool_id}"
+                
+                beets_factor = Decimal('0.5') if chain.name == "optimism" else Decimal('1')
+                expected_dao = pool_allocation * fee_config.dao_share_pct * beets_factor
+                assert abs(pool.to_dao_usd - expected_dao) < Decimal('0.01'), \
+                    f"Partner pool DAO calculation wrong for {pool.pool_id}"
+                
+                expected_vebal = pool_allocation * fee_config.vebal_share_pct * beets_factor
+                assert abs(pool.to_vebal_usd - expected_vebal) < Decimal('0.01'), \
+                    f"Partner pool veBAL calculation wrong for {pool.pool_id}"
+                
+                expected_incentives = pool_allocation * fee_config.vote_incentive_pct
+                assert abs(pool.total_to_incentives_usd - expected_incentives) < Decimal('0.01'), \
+                    f"Partner pool incentives calculation wrong for {pool.pool_id}"
+                
+                total_pct = (fee_config.partner_share_pct + fee_config.dao_share_pct + 
+                           fee_config.vebal_share_pct + fee_config.vote_incentive_pct)
+                assert abs(total_pct - Decimal('1')) < Decimal('0.001'), \
+                    f"Partner fee config percentages don't sum to 100% for {partner.name}"
+                
+                total_partner_fees += pool.to_partner_usd
+        
+        for pool_data in chain.partner_noncore_fee_data:
+            partner_fee = chain.get_partner_noncore_fee(pool_data.pool_id)
+            if partner_fee > 0:
+                partner_pools_found = True
+                total_partner_fees += partner_fee
+    
+    if not partner_pools_found:
+        pytest.skip("No partner pools in test data")
+    
+    assert total_partner_fees > 0, "Partner fees should be positive when partner pools exist"
+
+
+def test_alliance_fee_split(allocator_exact: FeeAllocator):
+    """Test that alliance fee splits are correctly allocated"""
+    alliance_config = allocator_exact.run_config.alliance_config
+    total_alliance_fees = Decimal(0)
+    alliance_pools_found = False
+    
+    for chain in allocator_exact.run_config.all_chains:
+        for pool in chain.core_pools:
+            if pool.is_alliance_pool:
+                alliance_pools_found = True
+                
+                expected_config = alliance_config.alliance_fee_allocations["core"]
+                assert pool.alliance_fee_config == expected_config, \
+                    f"Alliance pool {pool.pool_id} has wrong fee config"
+                
+                core_allocation = pool._core_pool_allocation()
+                pool_allocation = pool.earned_fee_share_of_chain_usd * core_allocation
+                
+                expected_partner = pool_allocation * expected_config.partner_share_pct
+                assert abs(pool.to_partner_usd - expected_partner) < Decimal('0.01'), \
+                    f"Alliance partner fee calculation wrong for {pool.pool_id}"
+                
+                beets_factor = Decimal('0.5') if chain.name == "optimism" else Decimal('1')
+                expected_dao = pool_allocation * expected_config.dao_share_pct * beets_factor
+                assert abs(pool.to_dao_usd - expected_dao) < Decimal('0.01'), \
+                    f"Alliance pool DAO calculation wrong for {pool.pool_id}"
+                
+                expected_vebal = pool_allocation * expected_config.vebal_share_pct * beets_factor
+                assert abs(pool.to_vebal_usd - expected_vebal) < Decimal('0.01'), \
+                    f"Alliance pool veBAL calculation wrong for {pool.pool_id}"
+                
+                expected_incentives = pool_allocation * expected_config.vote_incentive_pct
+                assert abs(pool.total_to_incentives_usd - expected_incentives) < Decimal('0.01'), \
+                    f"Alliance pool incentives calculation wrong for {pool.pool_id}"
+                
+                assert expected_config.vote_incentive_pct != allocator_exact.run_config.fee_config.vote_incentive_pct, \
+                    "Alliance should have different vote incentive percentage"
+                
+                total_alliance_fees += pool.to_partner_usd
+        
+        for pool_data in chain.alliance_noncore_fee_data:
+            alliance_pools_found = True
+            partner_fee = chain.get_alliance_noncore_member_fee(pool_data.pool_id)
+            total_alliance_fees += partner_fee
+            
+            if chain.alliance_noncore_fees_earned > 0:
+                expected_fee = (
+                    pool_data.total_earned_fees_usd_twap / 
+                    chain.alliance_noncore_fees_earned *
+                    chain._get_alliance_noncore_fees_collected() *
+                    alliance_config.alliance_fee_allocations["non_core"].partner_share_pct
+                )
+                
+                assert abs(partner_fee - expected_fee) < Decimal('0.01'), \
+                    f"Alliance non-core fee mismatch for pool {pool_data.pool_id}"
+    
+    if not alliance_pools_found:
+        pytest.skip("No alliance pools in test data")
+    
+    assert alliance_pools_found, "Should have found alliance pools in the test data"

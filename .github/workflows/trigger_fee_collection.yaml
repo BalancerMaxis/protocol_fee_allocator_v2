@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       manual_date:
-        description: "End date to process (YYYYMMDD format)"
+        description: "End date to process (YYYY-MM-DD format)"
         required: true
         type: string
   push:
@@ -17,9 +17,13 @@ jobs:
   process_fees:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -31,19 +35,33 @@ jobs:
             exit 0
           fi
 
-          # Get the path of the changed JSON file
+          # Try to get the path of the changed JSON file from git diff
           JSON_PATH=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'fee_allocator/fees_collected/.*\.json$' | head -n 1)
 
+          # If no changed file found (e.g., on rerun), get the most recent fee file
           if [ -z "$JSON_PATH" ]; then
-            echo "No JSON file found in recent changes."
-            exit 1
+            echo "No JSON file found in git diff, looking for most recent fee files..."
+            JSON_PATH=$(ls -t fee_allocator/fees_collected/v*_fees_*.json 2>/dev/null | head -n 1)
+            
+            if [ -z "$JSON_PATH" ]; then
+              echo "No fee files found at all."
+              exit 1
+            fi
+            
+            echo "Using most recent fee file: $JSON_PATH"
           fi
 
           echo "JSON Path: $JSON_PATH"
 
           # Extract the end date from filename using cut
           END_DATE=$(basename "$JSON_PATH" | cut -d'_' -f4 | cut -d'.' -f1)
+          
+          if [ -z "$END_DATE" ]; then
+            echo "Failed to extract date from filename: $JSON_PATH"
+            exit 1
+          fi
 
+          echo "Extracted end date: $END_DATE"
           echo "end-date=$END_DATE" >> $GITHUB_OUTPUT
 
       - name: Setup Python 3.10
@@ -55,6 +73,12 @@ jobs:
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          EXPLORER_API_KEY_MAINNET: ${{ secrets.EXPLORER_API_KEY_MAINNET }}
+          EXPLORER_API_KEY_ARBITRUM: ${{ secrets.EXPLORER_API_KEY_ARBITRUM }}
+          EXPLORER_API_KEY_POLYGON: ${{ secrets.EXPLORER_API_KEY_POLYGON }}
+          EXPLORER_API_KEY_BASE: ${{ secrets.EXPLORER_API_KEY_BASE }}
+          EXPLORER_API_KEY_GNOSIS: ${{ secrets.EXPLORER_API_KEY_GNOSIS }}
         run: |
           pwd
           end_day=${{ steps.get-date.outputs.end-date }}
@@ -65,12 +89,12 @@ jobs:
           end_timestamp=$((start_timestamp + 60*60*24*14)) # 2 weeks later
           pip3 install -r requirements.txt
 
-          # v2 run
-          python3 main.py --ts_now $end_timestamp --ts_in_the_past $start_timestamp --fees_file_name v2_fees_${date_range_string}.json --output_file_name v2_incentives_${date_range_string}.csv --protocol_version v2
-          # v3 run
-          python3 main.py --ts_now $end_timestamp --ts_in_the_past $start_timestamp --fees_file_name v3_fees_${date_range_string}.json --output_file_name v3_incentives_${date_range_string}.csv --protocol_version v3
-          # merge v2/v3 payload
-          python3 combine_payloads.py --payload_file_name v2_fees_${date_range_string}.json
+          # Combined v2+v3 run
+          python3 main_combined.py \
+            --ts_now $end_timestamp \
+            --ts_in_the_past $start_timestamp \
+            --v2_fees_file_name v2_fees_${date_range_string}.json \
+            --v3_fees_file_name v3_fees_${date_range_string}.json
 
       - name: Create PR
         id: cpr
@@ -80,14 +104,15 @@ jobs:
           title: "Biweekly Fee Report ending ${{ steps.get-date.outputs.end-date }}"
           body: |
             Checks before merging:
-            - [ ] all pools must be a core pool
+            - [ ] all pools must be a [core pool](https://github.com/BalancerMaxis/bal_addresses/blob/main/outputs/core_pools.json)
             - [ ] `total_incentives` + `fees_to_vebal` + `fees_to_dao` == [usdc onchain](https://etherscan.io/token/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48?a=0x7c68c42de679ffb0f16216154c996c354cf1161b)
             - [ ] `aura_incentives` / `total_incentives` ~= aurabal's vebal capture (https://app.aura.finance/#/stats)
             - [ ] `earned_fees` <= total_swept onchain (per chain)
             - [ ] `fees_to_dao` / (`fees_to_vebal` + `fees_to_dao` + `total_incentives`) == .175
             - [ ] `min(aura_incentives)` > threshold
             - [ ] `min(bal_incentives)` > threshold
-            - [ ] latest [vote round data added](https://github.com/aurafinance/aura-contracts/pulls?q=is%3Apr+is%3Aclosed) by aura team?
+            - [ ] latest [vote round data added](https://github.com/aurafinance/aura-contracts/commits/main) by aura team?
+            - [ ] [Aura market is live](https://hiddenhand.finance/aura) on Hidden Hand?
 
             Additional checks:
             - [ ] paladin quest v2 claimable earnings > $10k? https://quest.paladin.vote/#/claim
@@ -95,3 +120,16 @@ jobs:
           branch-suffix: timestamp
           delete-branch: true
           labels: "Biweekly-Report"
+
+    outputs:
+      pr_number: ${{ steps.cpr.outputs.pull-request-number }}
+      end_date: ${{ steps.get-date.outputs.end-date }}
+
+  comment_report:
+    needs: process_fees
+    if: needs.process_fees.outputs.pr_number && needs.process_fees.outputs.end_date
+    uses: ./.github/workflows/comment_payload_report.yaml
+    with:
+      pr_number: ${{ needs.process_fees.outputs.pr_number }}
+      end_date: ${{ needs.process_fees.outputs.end_date }}
+    secrets: inherit

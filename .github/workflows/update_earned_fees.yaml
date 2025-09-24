@@ -10,11 +10,14 @@ jobs:
   generate_earned_fees:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          ref: "biweekly-runs"
+          ref: "collect-fees-cron"
 
       - name: Setup Python 3.10
         uses: actions/setup-python@v5
@@ -30,13 +33,14 @@ jobs:
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
           GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |
           pwd
           python generate_earned_fees.py
 
       - name: Commit CSV files
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v6
         with:
-          branch: "biweekly-runs"
+          branch: "collect-fees-cron"
           file_pattern: "fee_allocator/allocations/incentives/current_fees/*_earned_fees_*.csv"
           commit_message: "ci: update core pool earned fees CSVs"

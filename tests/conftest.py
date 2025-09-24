@@ -12,8 +12,8 @@ from bal_tools import Web3RpcByChain
 
 @pytest.fixture
 def fee_period():
-    # past two weeks
-    end_time = int(datetime.now().timestamp()) - (12 * 3600)
+    today = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    end_time = int(today.timestamp())
     start_time = end_time - (14 * 24 * 3600)
     return (start_time, end_time)
 
@@ -44,7 +44,7 @@ def chain(run_config, web3):
 
 @pytest.fixture
 def allocator(fee_period):
-    input_fees = {"mainnet": Decimal("10000000.0")}
+    input_fees = {"mainnet": Decimal("10000000.0"), "optimism": Decimal("10000.0")}
 
     return FeeAllocator(
         input_fees, 
