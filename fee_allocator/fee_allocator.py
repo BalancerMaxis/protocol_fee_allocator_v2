@@ -126,7 +126,6 @@ class FeeAllocator:
         
         self._check_paladin_gauge_requirements()
         
-        # Generate CSVs
         incentives_path = self.generate_incentives_csv()
         bribe_path = self.generate_bribe_csv()
         alliance_path = self.generate_alliance_csv()
@@ -266,7 +265,6 @@ class FeeAllocator:
                         pool.total_to_incentives_usd += amount
                         pool.redirected_incentives_usd += amount
                         
-                        # Add to whichever platform already has more
                         if pool.to_aura_incentives_usd >= pool.to_bal_incentives_usd:
                             pool.to_aura_incentives_usd += amount
                         else:
@@ -357,7 +355,7 @@ class FeeAllocator:
                         ),
                         "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
-                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools) or any(pool.pool_id == core_pool.pool_id for pool in chain.partner_pools),
+                        "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools) or core_pool.pool_id in chain.partner_pools_map,
                     },
                 )
 
@@ -413,7 +411,6 @@ class FeeAllocator:
         output = []
         
         for chain in self.run_config.all_chains:
-            # Process alliance pools
             for alliance_pool in chain.alliance_pools:
                 member = next((m for m in self.run_config.alliance_config.alliance_members if alliance_pool.partner == m.name), None)
                 if not member:
@@ -428,7 +425,7 @@ class FeeAllocator:
                     pool_id = core_pool.pool_id
                     pool_type = "core"
                 elif noncore_pool:
-                    partner_fee = chain.get_alliance_noncore_partner_fee(alliance_pool.pool_id)
+                    partner_fee = chain.get_alliance_noncore_member_fee(alliance_pool.pool_id)
                     pool_id = noncore_pool.pool_id
                     pool_type = "non-core"
                 else:
@@ -454,35 +451,34 @@ class FeeAllocator:
     ) -> Path:
         logger.info("generating partner fee distribution csv")
         output = []
-        
-        if self.run_config.alliance_config.partners:
+
+        if self.run_config.partner_config and self.run_config.partner_config.partners:
             for chain in self.run_config.all_chains:
                 # Core partner pools
                 for pool in chain.core_pools:
-                    if pool.is_partner_pool:
-                        partner, _ = pool.partner_info
+                    if pool.partner:
                         output.append({
                             "pool_id": pool.pool_id,
                             "chain": chain.name,
-                            "partner": partner.name,
+                            "partner": pool.partner.name,
+                            "earned_fees": pool.total_earned_fees_usd_twap,
                             "amount": pool.to_partner_usd,
-                            "target": partner.multisig_address,
+                            "target": pool.partner.multisig_address,
                             "pool_type": "core"
                         })
-                
+
                 # Non-core partner pools
                 for pool_data in chain.partner_noncore_fee_data:
-                    partner_fee = chain.get_partner_noncore_fee(pool_data.pool_id)
-                    if partner_fee > 0:
-                        partner_info = self.run_config.alliance_config.get_partner_pool_config(pool_data.pool_id, chain.name, is_core=False)
-                        if partner_info:
-                            partner, _ = partner_info
+                    if pool_data.partner:
+                        partner_fee = chain.get_partner_noncore_fee(pool_data.pool_id)
+                        if partner_fee > 0:
                             output.append({
                                 "pool_id": pool_data.pool_id,
                                 "chain": chain.name,
-                                "partner": partner.name,
+                                "partner": pool_data.partner.name,
+                                "earned_fees": pool_data.total_earned_fees_usd_twap,
                                 "amount": partner_fee,
-                                "target": partner.multisig_address,
+                                "target": pool_data.partner.multisig_address,
                                 "pool_type": "non-core"
                             })
 
@@ -556,7 +552,6 @@ class FeeAllocator:
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
 
-        # Process alliance transfers
         alliance_fee_usdc_spent = 0
         if alliance_csv:
             try:
@@ -569,7 +564,6 @@ class FeeAllocator:
             except pd.errors.EmptyDataError:
                 logger.info(f"no alliance members found for protocol {self.run_config.protocol_version}")
         
-        # Process partner transfers
         partner_fee_usdc_spent = 0
         if partner_csv:
             try:
@@ -792,7 +786,7 @@ class FeeAllocator:
             total_beets += chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd
 
             for noncore_pool in chain.alliance_noncore_fee_data:
-                total_partner += chain.get_alliance_noncore_partner_fee(noncore_pool.pool_id)
+                total_partner += chain.get_alliance_noncore_member_fee(noncore_pool.pool_id)
             
             for noncore_pool in chain.partner_noncore_fee_data:
                 total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
@@ -809,15 +803,26 @@ class FeeAllocator:
         core_pool_incentives = total_aura + total_bal
         aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
-        total_core_fees = sum(chain.total_earned_fees_usd_twap for chain in self.run_config.all_chains)
-        total_noncore_fees = sum(chain.noncore_fees_collected + chain.alliance_noncore_fees_collected + chain.partner_noncore_fees_collected for chain in self.run_config.all_chains)
+        total_core_fees_collected = Decimal(0)
+        for chain in self.run_config.all_chains:
+            # Core pools get their share of collected fees based on earned/total_earned ratio
+            if chain.total_fees_earned > 0:
+                core_share = chain.total_earned_fees_usd_twap / chain.total_fees_earned
+                total_core_fees_collected += chain.fees_collected * core_share
+        
+        total_noncore_fees_collected = Decimal(0)
+        for chain in self.run_config.all_chains:
+            # Non-core fees are what's left after core pools
+            if chain.total_fees_earned > 0:
+                noncore_share = (chain.noncore_fees_collected + chain.alliance_noncore_fees_earned + chain.partner_noncore_fees_earned) / chain.total_fees_earned
+                total_noncore_fees_collected += chain.fees_collected * noncore_share
         
         summary = {
             "feesCollected": float(round(total_fees, 2)),
             "totalDistributed": float(round(total_distributed, 2)),
             "feesNotDistributed": float(round(total_fees - total_distributed, 2)),
-            "coreFees": float(round(total_core_fees, 2)),
-            "noncoreFees": float(round(total_noncore_fees, 2)),
+            "coreFees": float(round(total_core_fees_collected, 2)),
+            "noncoreFees": float(round(total_noncore_fees_collected, 2)),
             "auraIncentives": float(round(total_aura, 2)),
             "balIncentives": float(round(total_bal, 2)),
             "feesToDao": float(round(total_dao, 2)),
