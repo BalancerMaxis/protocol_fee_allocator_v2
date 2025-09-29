@@ -7,16 +7,15 @@ import pandas as pd
 from decimal import Decimal
 import datetime
 from pathlib import Path
-from web3 import Web3
 from dotenv import load_dotenv
 import json
 
-from fee_allocator.accounting.chains import CorePoolChain, CorePoolRunConfig
+from fee_allocator.accounting.chains import CorePoolRunConfig
 from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
-from fee_allocator.utils import get_hh_aura_target
 from fee_allocator.logger import logger
 from fee_allocator.payload_visualizer import save_markdown_report
+from fee_allocator.bribe_platforms import BribePlatformFactory, PaladinPlatform
 
 load_dotenv()
 
@@ -282,13 +281,15 @@ class FeeAllocator:
 
                 if not core_pool.gauge_address:
                     logger.warning(f"Pool {core_pool.pool_id} has no gauge address")
-                
+
+                platform = BribePlatformFactory.get_platform(core_pool.market_override, self.book, self.run_config)
+
                 output.append(
                     {
                         "target": core_pool.gauge_address,
                         "platform": "balancer",
                         "amount": round(core_pool.to_bal_incentives_usd, 4),
-                        "bribe_platform": core_pool.bribe_platform,
+                        "bribe_platform": platform.get_platform_for_market("balancer", core_pool.voting_pool_override),
                     },
                 )
                 output.append(
@@ -296,7 +297,7 @@ class FeeAllocator:
                         "target": core_pool.gauge_address,
                         "platform": "aura",
                         "amount": round(core_pool.to_aura_incentives_usd, 4),
-                        "bribe_platform": core_pool.bribe_platform,
+                        "bribe_platform": platform.get_platform_for_market("aura", core_pool.voting_pool_override),
                     },
                 )
 
@@ -510,14 +511,6 @@ class FeeAllocator:
         builder = SafeTxBuilder(self.book["multisigs/fees"])
         usdc = SafeContract(self.book["tokens/USDC"], abi_file_path=f"{base_dir}/abi/ERC20.json")
         bal = SafeContract(self.book["tokens/BAL"], abi_file_path=f"{base_dir}/abi/ERC20.json")
-        aura_bribe_market = SafeContract(
-            self.book["hidden_hand2/aura_briber"],
-            abi_file_path=f"{base_dir}/abi/bribe_market.json",
-        )
-        bal_bribe_market = SafeContract(
-            self.book["hidden_hand2/balancer_briber"],
-            abi_file_path=f"{base_dir}/abi/bribe_market.json",
-        )
 
         df = pd.read_csv(input_csv)
         
@@ -525,29 +518,27 @@ class FeeAllocator:
         payment_df = df[df["platform"] == "payment"].iloc[0]
         beets_df = df[df["platform"] == "beets"].iloc[0]
 
-        hh_bribe_df = bribe_df[bribe_df["bribe_platform"] == "hiddenhand"]
-        paladin_bribe_df = bribe_df[bribe_df["bribe_platform"] == "paladin"]
+        platform_groups = {}
+        for platform_name in bribe_df["bribe_platform"].unique():
+            platform_bribes = bribe_df[bribe_df["bribe_platform"] == platform_name]
+            if not platform_bribes.empty and platform_bribes["amount"].sum() > 0:
+                platform_groups[platform_name] = platform_bribes
 
-        total_hh_bribe_usdc = int(hh_bribe_df["amount"].sum() * 1e6)
-        total_paladin_bribe_usdc = int(paladin_bribe_df["amount"].sum() * 1e6)
-        
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
-        if total_hh_bribe_usdc > 0:
-            self._process_hiddenhand_bribes(
-                hh_bribe_df,
-                total_hh_bribe_usdc,
-                usdc,
-                bal_bribe_market,
-                aura_bribe_market
-            )
-        
-        if total_paladin_bribe_usdc > 0:
-            self._process_paladin_quests(
-                paladin_bribe_df,
-                usdc
-            )
+        for platform_name, platform_bribes in platform_groups.items():
+            try:
+                platform = BribePlatformFactory.get_platform(
+                    platform_name,
+                    self.book,
+                    self.run_config
+                )
+
+                platform.process_bribes(platform_bribes, builder, usdc)
+            except NotImplementedError as e:
+                logger.warning(f"Platform {platform_name} not yet implemented: {e}")
+                continue
 
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
@@ -604,62 +595,24 @@ class FeeAllocator:
     
     def _check_paladin_gauge_requirements(self):
         """Check Paladin gauges for requirements and log issues"""
-        
-        with open(f"{base_dir}/abi/gauge.json", "r") as f:
-            gauge_abi = json.load(f)
-        
-        w3 = self.run_config.mainnet.web3
-        usdc = Web3.to_checksum_address(self.book["tokens/USDC"])
+        paladin = PaladinPlatform(self.book, self.run_config)
         gauges_with_issues = []
-        
+
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
-                if pool.bribe_platform != "paladin":
+                if pool.market_override != "paladin":
                     continue
-                    
-                gauge = Web3.to_checksum_address(pool.gauge_address)
-                contract = w3.eth.contract(address=gauge, abi=gauge_abi)
-                
-                has_issue = False
-                action_needed = []
-                
-                try:
-                    usdc_found = usdc in [contract.functions.reward_tokens(i).call() for i in range(8)]
 
-                    has_correct_distributor = False
-                    if usdc_found:
-                        distributor = contract.functions.reward_data(usdc).call()[1]
-                        has_correct_distributor = (
-                            distributor.lower() == self.book["paladin/QuestBoardV2_1"].lower() or
-                            distributor.lower() == self.book["paladin/QuestBoardV2_1Aura"].lower()
-                        )
-                    
-                    if not usdc_found or not has_correct_distributor:
-                        has_issue = True
-                        
-                        distributors_needed = []
-                        if pool.to_bal_incentives_usd > 0:
-                            distributors_needed.append(f"Balancer distributor ({self.book['paladin/QuestBoardV2_1']})")
-                        if pool.to_aura_incentives_usd > 0:
-                            distributors_needed.append(f"Aura distributor ({self.book['paladin/QuestBoardV2_1Aura']})")
-                        
-                        if distributors_needed:
-                            if not usdc_found:
-                                action_needed.append(f"Add USDC ({usdc}) as reward token and set {' and '.join(distributors_needed)}")
-                            else:
-                                action_needed.append(f"Set {' and '.join(distributors_needed)}")
-                                
-                except Exception:
-                    has_issue = True
-                    action_needed.append("Gauge has incompatible implementation")
+                is_valid, error_msg = paladin.validate_gauge_requirements(pool.gauge_address)
 
-                if has_issue:
-                    logger.warning(f"Paladin gauge {pool.gauge_address} missing requirements: {'. '.join(action_needed)}")
+                if not is_valid:
+                    pool.market_override = "hh"
+                    logger.warning(f"Paladin gauge {pool.gauge_address} missing requirements, falling back to HiddenHand: {error_msg}")
                     gauges_with_issues.append({
                         "gauge": pool.gauge_address,
                         "pool_id": pool.pool_id,
                         "chain": chain.name,
-                        "action": ". ".join(action_needed),
+                        "action": error_msg,
                         "amount": float(pool.total_to_incentives_usd)
                     })
 
@@ -667,85 +620,6 @@ class FeeAllocator:
             issues_file = base_dir / "allocations" / f"{self.run_config.protocol_version}_paladin_gauge_status_{self.start_date}_{self.end_date}.json"
             with open(issues_file, "w") as f:
                 json.dump(gauges_with_issues, f, indent=2)
-    
-    
-    def _process_hiddenhand_bribes(self, bribe_df, total_bribe_usdc, usdc, bal_bribe_market, aura_bribe_market):
-        usdc.approve(self.book["hidden_hand2/bribe_vault"], total_bribe_usdc + 1)  # 1 wei buffer
-        
-        for _, row in bribe_df.iterrows():
-            if int(row["amount"]) == 0:
-                continue
-                
-            prop_hash = self._get_prop_hash(row["platform"], row["target"])
-            mantissa = round(row["amount"] * 1e6)
-            
-            if row["platform"] == "balancer":
-                bal_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 2)
-            elif row["platform"] == "aura":
-                aura_bribe_market.depositBribe(prop_hash, self.book["tokens/USDC"], mantissa, 0, 1)
-    
-    def _process_paladin_quests(self, bribe_df, usdc):
-        
-        valid_bribes = bribe_df[bribe_df["amount"] > 0]
-        
-        with open(f"{base_dir}/abi/paladin_quest_board.json", "r") as f:
-            paladin_abi = json.load(f)
-
-        quest_boards = {}
-        platform_fee_ratios = {}
-        
-        for platform in ["balancer", "aura"]:
-            bribes = valid_bribes[valid_bribes["platform"] == platform]
-            if bribes.empty:
-                continue
-                
-            quest_board_addr = self.book["paladin/QuestBoardV2_1"] if platform == "balancer" else self.book["paladin/QuestBoardV2_1Aura"]
-            quest_boards[platform] = SafeContract(quest_board_addr, abi=paladin_abi)
-            
-            w3_contract = self.run_config.mainnet.web3.eth.contract(
-                address=quest_board_addr,
-                abi=paladin_abi
-            )
-            try:
-                platform_fee_ratios[platform] = w3_contract.functions.platformFeeRatio().call()
-            except Exception:
-                platform_fee_ratios[platform] = 400  # 4% default
-            
-            total = sum(round(row["amount"] * 1e6) for _, row in bribes.iterrows())
-            usdc.approve(quest_board_addr, total)
-        
-        for _, row in valid_bribes.iterrows():
-            mantissa = round(row["amount"] * 1e6)
-            platform = row["platform"]
-            quest_board = quest_boards[platform]
-            fee_ratio = platform_fee_ratios[platform]
-            
-            total_reward_amount = int(mantissa * 10000 / (10000 + fee_ratio))
-            fee_amount = mantissa - total_reward_amount
-            
-            quest_board.createRangedQuest(
-                row["target"],               # gauge
-                self.book["tokens/USDC"],    # rewardToken
-                True,                        # startNextPeriod
-                2,                           # duration (2 weeks)
-                1,                           # minRewardPerVote 
-                total_reward_amount,         # maxRewardPerVote
-                total_reward_amount,         # totalRewardAmount
-                fee_amount,                  # feeAmount
-                0,                           # voteType (NORMAL)
-                1,                           # closeType (ROLLOVER)
-                []                           # voterList
-            )
-
-
-    @staticmethod
-    def _get_prop_hash(platform: str, target: str) -> str:
-        if platform == "balancer":
-            prop = Web3.solidity_keccak(["address"], [Web3.to_checksum_address(target)])
-            return f"0x{prop.hex().replace('0x', '')}"
-        if platform == "aura":
-            return get_hh_aura_target(target)
-        raise ValueError(f"platform {platform} not supported")
 
     def recon(self) -> None:
         """

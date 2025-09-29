@@ -69,9 +69,11 @@ class CorePoolRunConfig:
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
         self.partner_config = PartnerConfig(**requests.get(PARTNER_CONFIG_URL).json())
+
         pool_overrides_raw = requests.get(POOL_OVERRIDES_URL).json()
+
         self.pool_overrides: Dict[str, PoolOverride] = {
-            pool_id: PoolOverride(**override_data) 
+            pool_id: PoolOverride(**override_data)
             for pool_id, override_data in pool_overrides_raw.items()
         }
 

@@ -132,6 +132,8 @@ class PayloadVisualizer:
                     groups["Balancer Bribes"].append(tx)
                 elif to_addr_lower == "0xfd9f19a9b91becae3c8dabc36cdd1ea86fc1a222":  # vlAURA Quest Board
                     groups["Aura Bribes"].append(tx)
+            elif method == "createBounty":
+                groups["Balancer Bribes"].append(tx)
             elif method == "transfer":
                 recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
                 if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
@@ -151,7 +153,8 @@ class PayloadVisualizer:
             elif method == "approve":
                 groups["Token Approvals"].append(tx)
             else:
-                raise ValueError(f"Unrecognized transaction method: {method} to address {to_addr}. This should never happen - the payload contains an unexpected transaction type.")
+                groups["Unknown Transactions"].append(tx)
+                print(f"Warning: Unknown transaction method: {method} to address {to_addr}. Adding to 'Unknown Transactions' group.")
         
         return dict(groups)
 
@@ -303,6 +306,12 @@ class PayloadVisualizer:
                                 totals["aura_bribes_usdc"] += amount
                             elif group_name == "Balancer Bribes":
                                 totals["bal_bribes_usdc"] += amount
+                    elif method == "createBounty":
+                        if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
                     else:
                         if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
                             amount = Decimal(tx["contractInputsValues"]["_amount"])
@@ -345,6 +354,13 @@ class PayloadVisualizer:
                 data["col2"] = self.format_amount(str(total_reward + fee_amount))
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
                 data["col4"] = "Paladin"
+            elif method == "createBounty":
+                gauge = tx.get("contractInputsValues", {}).get("gauge", "")
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
+                amount = tx.get("contractInputsValues", {}).get("totalRewardAmount", "0")
+                data["col2"] = self.format_amount(amount)
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
+                data["col4"] = "StakeDAO"
             else:
                 proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
                 data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
