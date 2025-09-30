@@ -51,8 +51,8 @@ class FeeAllocator:
     ):
         self.input_fees = input_fees
         self.date_range = date_range
-        self.start_date = datetime.datetime.fromtimestamp(date_range[0]).date()
-        self.end_date = datetime.datetime.fromtimestamp(date_range[1]).date()
+        self.start_date = datetime.datetime.fromtimestamp(date_range[0], tz=datetime.timezone.utc).date()
+        self.end_date = datetime.datetime.fromtimestamp(date_range[1], tz=datetime.timezone.utc).date()
         self.run_config = CorePoolRunConfig(
             input_fees,
             date_range,
@@ -320,7 +320,7 @@ class FeeAllocator:
 
         df = pd.DataFrame(output)
         datetime_file_header = datetime.datetime.fromtimestamp(
-            self.date_range[1]
+            self.date_range[1], tz=datetime.timezone.utc
         ).date()
         output_path = PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_bribes_{datetime_file_header}.csv"
         output_path.parent.mkdir(exist_ok=True)
@@ -567,7 +567,7 @@ class FeeAllocator:
             except pd.errors.EmptyDataError:
                 logger.info(f"no partners found for protocol {self.run_config.protocol_version}")
 
-        datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1]).date()
+        datetime_file_header = datetime.datetime.fromtimestamp(self.date_range[1], tz=datetime.timezone.utc).date()
 
         vebal_usdc_amount = round(float(self.run_config.total_to_vebal_usd) * 1e6)
         

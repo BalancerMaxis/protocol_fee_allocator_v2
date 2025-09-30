@@ -5,17 +5,14 @@ from .base import BribePlatform
 from bal_tools.safe_tx_builder import SafeContract
 from pathlib import Path
 from fee_allocator.logger import logger
-import json
 
 
 class StakeDAOPlatform(BribePlatform):
     """StakeDAO VoteMarket v2 platform implementation for Balancer bribes"""
 
-    VOTE_MARKET_ADDRESS = "0x0000000895cB182E6f983eb4D8b4E0Aa0B31Ae4c"
-
     def __init__(self, book: Dict[str, str], run_config: Any):
         super().__init__(book, run_config)
-        self.vote_market_address = self.VOTE_MARKET_ADDRESS
+        self.vote_market_address = book["stake_dao/votemarket_v1"]
         self.usdc_address = book["tokens/USDC"]
 
     def process_bribes(self, bribes_df: pd.DataFrame, builder: Any, usdc: Any) -> None:
