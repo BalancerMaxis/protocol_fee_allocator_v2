@@ -265,7 +265,7 @@ class CorePoolChain(AbstractCorePoolChain):
     
     def _fetch_partner_pools(self) -> Dict[str, Partner]:
         """
-        Fetch partner pools from subgraph using pool types.
+        Fetch partner pools from both explicit pool lists and pool types.
         Returns a mapping of pool_id -> Partner
         """
         partner_pools_by_id = {}
@@ -275,22 +275,33 @@ class CorePoolChain(AbstractCorePoolChain):
             if not partner.active:
                 continue
 
-            if not partner.pool_types:
-                logger.warning(f"No pool types defined for partner {partner.name}")
-                continue
-
-            for pool_type in partner.pool_types:
-                pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
-                logger.info(f"Found {len(pool_ids)} {pool_type} pools for {partner.name} on {self.name}")
-
-                for pool_id in pool_ids:
+            if partner.pools:
+                logger.info(f"Processing {len(partner.pools)} explicit pools for partner {partner.name}")
+                for pool_id in partner.pools:
                     try:
                         protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
                         if protocol_version == allocator_version:
                             partner_pools_by_id[pool_id] = partner
-                            logger.info(f"v{protocol_version} Partner pool {pool_id} from {partner.name} added")
+                            logger.info(f"v{protocol_version} Partner pool {pool_id} from {partner.name} added (explicit)")
                     except Exception as e:
-                        logger.warning(f"Failed to get protocol version for pool {pool_id}: {e}")
+                        logger.warning(f"Failed to get protocol version for explicit pool {pool_id}: {e}")
+
+            if partner.pool_types:
+                for pool_type in partner.pool_types:
+                    pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
+                    logger.info(f"Found {len(pool_ids)} {pool_type} pools for {partner.name} on {self.name}")
+
+                    for pool_id in pool_ids:
+                        # Skip if already added from explicit list
+                        if pool_id in partner_pools_by_id:
+                            continue
+                        try:
+                            protocol_version = self.subgraph.get_pool_protocol_version(pool_id)
+                            if protocol_version == allocator_version:
+                                partner_pools_by_id[pool_id] = partner
+                                logger.info(f"v{protocol_version} Partner pool {pool_id} from {partner.name} added (dynamic)")
+                        except Exception as e:
+                            logger.warning(f"Failed to get protocol version for pool {pool_id}: {e}")
 
         return partner_pools_by_id
 
