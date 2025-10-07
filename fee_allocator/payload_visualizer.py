@@ -67,6 +67,11 @@ class PayloadVisualizer:
                 partner_addresses.append(addr_lower)
                 partner_names[addr_lower] = partner['name']
 
+        ezkl_addr = "0xb7aadd330a64088a85e500874dcdcfb7f253feb4"
+        if ezkl_addr not in partner_addresses:
+            partner_addresses.append(ezkl_addr)
+            partner_names[ezkl_addr] = "ezkl"
+
         return alliance_addresses, alliance_names, partner_addresses, partner_names
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
@@ -132,6 +137,10 @@ class PayloadVisualizer:
                     groups["Balancer Bribes"].append(tx)
                 elif to_addr_lower == "0xfd9f19a9b91becae3c8dabc36cdd1ea86fc1a222":  # vlAURA Quest Board
                     groups["Aura Bribes"].append(tx)
+            elif method == "createCampaign":
+                # StakeDAO VoteMarket v2
+                if to_addr.lower() == "0x53ad4cd1f1e52dd02aa9fc4a8250a1b74f351ca2":  # CampaignRemoteManager
+                    groups["Balancer Bribes"].append(tx)
             elif method == "createBounty":
                 groups["Balancer Bribes"].append(tx)
             elif method == "transfer":
@@ -312,6 +321,16 @@ class PayloadVisualizer:
                             totals["bribes_usdc"] += amount
                             if group_name == "Balancer Bribes":
                                 totals["bal_bribes_usdc"] += amount
+                    elif method == "createCampaign":
+                        params_str = tx.get("contractInputsValues", {}).get("params", "")
+                        import ast
+                        params = ast.literal_eval(params_str)
+                        token = params[3].lower()  # reward token
+                        if token == self.book.get("tokens/USDC", "").lower():
+                            amount = Decimal(params[6])  # totalRewardAmount
+                            totals["bribes_usdc"] += amount
+                            if group_name == "Balancer Bribes":
+                                totals["bal_bribes_usdc"] += amount
                     else:
                         if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
                             amount = Decimal(tx["contractInputsValues"]["_amount"])
@@ -360,7 +379,19 @@ class PayloadVisualizer:
                 amount = tx.get("contractInputsValues", {}).get("totalRewardAmount", "0")
                 data["col2"] = self.format_amount(amount)
                 data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
-                data["col4"] = "StakeDAO"
+                data["col4"] = "StakeDAO v1"
+            elif method == "createCampaign":
+                params_str = tx.get("contractInputsValues", {}).get("params", "")
+                import ast
+                params = ast.literal_eval(params_str)
+                # params = (chainId, gauge, manager, token, periods, maxReward, totalReward, whitelist, hook, isWhitelist)
+                gauge = params[1]  # gauge address
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
+                token = params[3]  # reward token
+                data["col3"] = self.format_address(token)
+                amount = str(params[6])  # totalRewardAmount
+                data["col2"] = self.format_amount(amount)
+                data["col4"] = "StakeDAO v2"
             else:
                 proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
                 data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
