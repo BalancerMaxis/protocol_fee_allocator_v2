@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import requests
 
 from rich.console import Console
@@ -323,8 +323,14 @@ class PayloadVisualizer:
                                 totals["bal_bribes_usdc"] += amount
                     elif method == "createCampaign":
                         params_str = tx.get("contractInputsValues", {}).get("params", "")
-                        import ast
-                        params = ast.literal_eval(params_str)
+                        # Handle both JSON string and Python tuple formats
+                        if params_str.startswith('['):
+                            # JSON format
+                            params = json.loads(params_str)
+                        else:
+                            # Python tuple format (legacy)
+                            import ast
+                            params = ast.literal_eval(params_str)
                         token = params[3].lower()  # reward token
                         if token == self.book.get("tokens/USDC", "").lower():
                             amount = Decimal(params[6])  # totalRewardAmount
@@ -382,8 +388,14 @@ class PayloadVisualizer:
                 data["col4"] = "StakeDAO v1"
             elif method == "createCampaign":
                 params_str = tx.get("contractInputsValues", {}).get("params", "")
-                import ast
-                params = ast.literal_eval(params_str)
+                # Handle both JSON string and Python tuple formats
+                if params_str.startswith('['):
+                    # JSON format
+                    params = json.loads(params_str)
+                else:
+                    # Python tuple format (legacy)
+                    import ast
+                    params = ast.literal_eval(params_str)
                 # params = (chainId, gauge, manager, token, periods, maxReward, totalReward, whitelist, hook, isWhitelist)
                 gauge = params[1]  # gauge address
                 data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge

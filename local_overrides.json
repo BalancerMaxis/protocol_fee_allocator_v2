@@ -1,0 +1,11 @@
+{
+    "0x1e19cf2d73a72ef1332c882f20534b6519be0276000200000000000000000112": {
+      "voting_pool_override": "bal",
+      "market_override": "hh"
+    },
+    "0x85b2b559bc2d21104c4defdd6efca8a20343361d": {
+      "voting_pool_override": "split",
+      "market_override": "stakedao"
+    }
+  }
+  

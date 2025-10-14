@@ -3,6 +3,7 @@ from typing import List, Dict, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import os
+import json
 from dotenv import load_dotenv
 
 from web3 import Web3
@@ -30,8 +31,7 @@ from fee_allocator.accounting.models import (
 from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
     ALLIANCE_CONFIG_URL,
-    PARTNER_CONFIG_URL,
-    POOL_OVERRIDES_URL
+    PARTNER_CONFIG_URL
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
 from fee_allocator.logger import logger
@@ -70,7 +70,13 @@ class CorePoolRunConfig:
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
         self.partner_config = PartnerConfig(**requests.get(PARTNER_CONFIG_URL).json())
 
-        pool_overrides_raw = requests.get(POOL_OVERRIDES_URL).json()
+        # Load pool overrides from local file
+        local_overrides_path = Path(__file__).parent.parent.parent / "local_overrides.json"
+        if not local_overrides_path.exists():
+            raise FileNotFoundError(f"local_overrides.json not found at {local_overrides_path}")
+
+        with open(local_overrides_path, 'r') as f:
+            pool_overrides_raw = json.load(f)
 
         self.pool_overrides: Dict[str, PoolOverride] = {
             pool_id: PoolOverride(**override_data)

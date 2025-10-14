@@ -106,10 +106,10 @@ class StakeDAOPlatform(BribePlatform):
             ccip_message
         ).call()
 
-        # 20% buffer
-        fee_with_buffer = int(fee * 1.20)
+        # 50% buffer for safety
+        fee_with_buffer = int(fee * 1.50)
 
-        logger.info(f"CCIP fee for chain {destination_chain_id}: {Web3.from_wei(fee_with_buffer, 'ether')} ETH (with 10% buffer)")
+        logger.info(f"CCIP fee for chain {destination_chain_id}: {Web3.from_wei(fee_with_buffer, 'ether')} ETH (with 30% buffer)")
         return fee_with_buffer
 
     def process_bribes(self, bribes_df: pd.DataFrame, builder: Any, usdc: Any) -> None:
