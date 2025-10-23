@@ -1,5 +1,9 @@
 {
-  "avalanche": 5470841839,
+  "avalanche": 17037904970,
+  "base": 127943496102,
+  "gnosis": 4869862296,
+  "arbitrum": 8701144463,
   "optimism": 528740192,
-  "mainnet": 0
+  "plasma": 74462862951,
+  "mainnet": 33661436626
 }
