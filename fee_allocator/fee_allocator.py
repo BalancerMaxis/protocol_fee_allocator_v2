@@ -304,7 +304,7 @@ class FeeAllocator:
         noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd for chain in self.run_config.all_chains)
         output.append(
             {
-                "target": "0x10A19e7eE7d7F8a52822f6817de8ea18204F2e4f",  # DAO msig
+                "target": "0x0EFcCBb9E2C09Ea29551879bd9Da32362b32fc89",  # DAO msig
                 "platform": "payment",
                 "amount": self.run_config.total_to_dao_usd + noncore_total_to_dao_usd,
             }
