@@ -304,7 +304,7 @@ class FeeAllocator:
         noncore_total_to_beets_usd = sum(chain.noncore_to_beets_usd + chain.alliance_noncore_to_beets_usd + chain.partner_noncore_to_beets_usd for chain in self.run_config.all_chains)
         output.append(
             {
-                "target": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",  # Balancer Onchain msig
+                "target": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",  # Balancer Onchain Ltd msig
                 "platform": "payment",
                 "amount": self.run_config.total_to_dao_usd + noncore_total_to_dao_usd,
             }
