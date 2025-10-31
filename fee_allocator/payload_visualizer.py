@@ -136,7 +136,7 @@ class PayloadVisualizer:
                 recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
                 if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
                     groups["veBAL Transfers"].append(tx)
-                elif recipient == self.book.get("multisigs/treasury", "0x0EFcCBb9E2C09Ea29551879bd9Da32362b32fc89",).lower():
+                elif recipient == self.book.get("multisigs/balancer_onchain_ltd", "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941").lower():
                     groups["DAO Transfers"].append(tx)
                 elif recipient == self.book.get("multisigs/beets_treasury").lower():
                     groups["Beets Transfers"].append(tx)
