@@ -44,11 +44,20 @@ def chain(run_config, web3):
 
 @pytest.fixture
 def allocator(fee_period):
-    input_fees = {"mainnet": Decimal("10000000.0"), "optimism": Decimal("10000.0")}
+    input_fees = {
+        "mainnet": Decimal("1000000"),
+        "arbitrum": Decimal("1000000"),
+        "polygon": Decimal("1000000"),
+        "optimism": Decimal("1000000"),
+        "base": Decimal("1000000"),
+        "gnosis": Decimal("1000000"),
+        "avalanche": Decimal("1000000"),
+        "plasma": Decimal("1000000"),
+    }
 
     return FeeAllocator(
-        input_fees, 
-        fee_period, 
-        cache_dir=Path("tests/cache"), 
+        input_fees,
+        fee_period,
+        cache_dir=Path("tests/cache"),
         use_cache=True
     )
