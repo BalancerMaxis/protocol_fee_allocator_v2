@@ -182,9 +182,6 @@ class StakeDAOPlatform(BribePlatform):
 
             logger.info(f"Created StakeDAO v2 bribe for {chain_name} gauge {gauge_address} (campaign on {destination_chain_name}): ${row['amount']:.2f} USDC (includes {eth_amount:.6f} ETH for CCIP)")
 
-    def get_total_approval_amount(self, bribes_df: pd.DataFrame) -> int:
-        """Returns 0 because approvals are handled in process_bribes method."""
-        return 0
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
         """StakeDAO doesn't have specific gauge requirements"""
