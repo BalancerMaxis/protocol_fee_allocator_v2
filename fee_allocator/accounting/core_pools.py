@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Dict, TYPE_CHECKING, Optional, Union
+from typing import List, TYPE_CHECKING, Optional, Union
 from decimal import Decimal
 
 from bal_tools.models import PoolSnapshot, TWAPResult
@@ -96,7 +96,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
         self.voting_pool_override = self._get_voting_pool_override()
         self.market_override = self._get_market_override()
-        self.bribe_platform = self._get_bribe_platform()
         
         self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
@@ -144,8 +143,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
         return pool_override.market_override if pool_override else "hh"
     
-    def _get_bribe_platform(self) -> str:
-        return "paladin" if self.market_override == "paladin" else "hiddenhand"
 
     def _earned_fee_share_of_chain_usd(self) -> Decimal:
         if self.chain.total_earned_fees_usd_twap == 0:
@@ -173,12 +170,16 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         # Alliance core pools get 100% to AURA
         if self.is_alliance_core_pool:
             return self.total_to_incentives_usd if platform == "aura" else Decimal(0)
-        
+
+        if self.voting_pool_override == "split" or self.voting_pool_override is None:
+            aura_share = self.chain.chains.aura_vebal_share
+            return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
+
         if self.voting_pool_override == platform:
             return self.total_to_incentives_usd
         elif self.voting_pool_override and self.voting_pool_override != platform:
             return Decimal(0)
-        
+
         aura_share = self.chain.chains.aura_vebal_share
         return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
 

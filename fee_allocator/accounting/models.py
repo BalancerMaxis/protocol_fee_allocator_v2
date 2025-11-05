@@ -131,9 +131,17 @@ class Partner(BaseModel):
     name: str
     multisig_address: str
     active: bool
-    pool_types: list[str]  # List of pool types this partner supports (e.g., ["QUANT_AMM_WEIGHTED"])
+    pool_types: Optional[list[str]] = None  # List of pool types this partner supports (e.g., ["QUANT_AMM_WEIGHTED"])
+    pools: Optional[list[str]] = None
     # Optional custom fee allocations - if not specified, uses default from PartnerConfig
     fee_allocations: PartnerFeeAllocations | None = None
+
+    @validator('pools')
+    def validate_has_pool_source(cls, v, values):
+        """Ensure partner has either pools or pool_types defined"""
+        if not v and not values.get('pool_types'):
+            raise ValueError(f"Partner {values.get('name', 'unknown')} must have either 'pools' or 'pool_types' defined")
+        return v
 
 
 class AllianceConfig(BaseModel):
