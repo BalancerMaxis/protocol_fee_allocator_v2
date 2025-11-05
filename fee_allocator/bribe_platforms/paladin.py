@@ -76,9 +76,6 @@ class PaladinPlatform(BribePlatform):
                 []
             )
 
-    def get_total_approval_amount(self, bribes_df: pd.DataFrame) -> int:
-        """Calculate total USDC that needs approval for each quest board"""
-        return 0
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
         """Validate gauge has USDC as reward token with correct distributor"""

@@ -109,7 +109,7 @@ class StakeDAOPlatform(BribePlatform):
         # 50% buffer for safety
         fee_with_buffer = int(fee * 1.50)
 
-        logger.info(f"CCIP fee for chain {destination_chain_id}: {Web3.from_wei(fee_with_buffer, 'ether')} ETH (with 30% buffer)")
+        logger.info(f"CCIP fee for chain {destination_chain_id}: {Web3.from_wei(fee_with_buffer, 'ether')} ETH (with 50% buffer)")
         return fee_with_buffer
 
     def process_bribes(self, bribes_df: pd.DataFrame, builder: Any, usdc: Any) -> None:
@@ -135,8 +135,12 @@ class StakeDAOPlatform(BribePlatform):
                 continue
 
             gauge_address = Web3.to_checksum_address(row["target"])
-            chain_name = self._gauge_to_chain_cache.get(gauge_address.lower(), "mainnet")
+            chain_name = self._gauge_to_chain_cache.get(gauge_address.lower())
             chain_id = AddrBook.chain_ids_by_name.get(chain_name)
+
+            if not chain_name or not chain_id:
+                raise ValueError(f"Cannot resolve chain for gauge {gauge_address}")
+
             mantissa = round(row["amount"] * 1e6)
 
             # Mainnet gauges route to Arbitrum, L2 gauges stay on same chain
@@ -178,9 +182,6 @@ class StakeDAOPlatform(BribePlatform):
 
             logger.info(f"Created StakeDAO v2 bribe for {chain_name} gauge {gauge_address} (campaign on {destination_chain_name}): ${row['amount']:.2f} USDC (includes {eth_amount:.6f} ETH for CCIP)")
 
-    def get_total_approval_amount(self, bribes_df: pd.DataFrame) -> int:
-        """Returns 0 because approvals are handled in process_bribes method."""
-        return 0
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
         """StakeDAO doesn't have specific gauge requirements"""

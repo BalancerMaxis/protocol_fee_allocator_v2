@@ -22,7 +22,6 @@ class BribePlatform(ABC):
         """
         pass
 
-    @abstractmethod
     def get_total_approval_amount(self, bribes_df: pd.DataFrame) -> int:
         """
         Calculate total USDC amount that needs approval for this platform
@@ -33,7 +32,7 @@ class BribePlatform(ABC):
         Returns:
             Total amount in USDC wei that needs approval
         """
-        pass
+        return 0
 
     @abstractmethod
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
