@@ -101,12 +101,17 @@ def main() -> None:
         )
         print("\n" + "="*80 + "\n")
 
-    save_combined_report(
-        combined_payload_path, 
-        v2_fee_file_path, 
-        v3_fee_file_path, 
+    report_path = save_combined_report(
+        combined_payload_path,
+        v2_fee_file_path,
+        v3_fee_file_path,
         gauge_issues_paths if gauge_issues_paths else None
     )
+
+    from quantamm.retroactive_fees import generate_quantamm_retroactive_report
+    quantamm_report, _ = generate_quantamm_retroactive_report(combined_payload_path)
+    with open(report_path, 'a') as f:
+        f.write(quantamm_report)
 
 
 if __name__ == "__main__":
