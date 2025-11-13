@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1762518135,
+  "createdAt": 1762993439,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -32,7 +32,7 @@
       },
       "contractInputsValues": {
         "_spender": "0xE00fe722e5bE7ad45b1A16066E431E47Df476CeC",
-        "_value": "20331485801"
+        "_value": "20256702401"
       }
     },
     {
@@ -618,7 +618,7 @@
       "contractInputsValues": {
         "_proposal": "0x0e89bda9685d6b9226b1a02946ab5612d520bc315f305fc7d248980d7d8dccfb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "1336879800",
+        "_amount": "1311206100",
         "_maxTokensPerVote": "0",
         "_periods": "2"
       }
@@ -660,7 +660,7 @@
       "contractInputsValues": {
         "_proposal": "0x0e89bda9685d6b9226b1a02946ab5612d520bc315f305fc7d248980d7d8dccfb",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "2557241300",
+        "_amount": "2508131600",
         "_maxTokensPerVote": "0",
         "_periods": "1"
       }
@@ -686,7 +686,7 @@
       },
       "contractInputsValues": {
         "_to": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",
-        "_value": "31634248338"
+        "_value": "31634248398"
       }
     },
     {
@@ -830,31 +830,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "127749870600"
-      }
-    },
-    {
-      "to": "0xba100000625a3754423978a60c9317c58a424e3D",
-      "value": "0",
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
-        "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "14647561362283062892138"
+        "_value": "127824654100"
       }
     }
   ]
