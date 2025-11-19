@@ -38,7 +38,7 @@ jobs:
           fi
 
       - name: Trigger multisig-ops workflow
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.MULTISIG_OPS_PAT }}
           repository: BalancerMaxis/multisig-ops
@@ -52,7 +52,7 @@ jobs:
             }
 
       - name: Comment on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
