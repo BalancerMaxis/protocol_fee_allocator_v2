@@ -247,13 +247,8 @@ class FeeAllocator:
                         pool.to_aura_incentives_usd = potential_aura
                         pool.to_bal_incentives_usd = Decimal(0)
                 
-                # After dust handling, if pool can't meet minimum requirements for meaningful incentives
-                # A pool needs either: AURA >= $800 OR BAL >= $75
-                # If it can't meet either minimum, it should be zeroed out
-                has_valid_aura = pool.to_aura_incentives_usd >= min_aura_incentive
-                has_valid_bal = pool.to_bal_incentives_usd >= dust_threshold
-
-                if not has_valid_aura and not has_valid_bal:
+                # After dust handling, if pool has no AURA and only dust BAL, it can't provide meaningful incentives
+                if pool.to_aura_incentives_usd < min_aura_incentive and pool.to_bal_incentives_usd < dust_threshold:
                     pools_to_zero.append(pool)
             
             # Redistribute from pools that can't provide meaningful incentives
