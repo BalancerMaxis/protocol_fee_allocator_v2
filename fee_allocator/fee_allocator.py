@@ -93,6 +93,15 @@ class FeeAllocator:
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
 
             if not pools_to_receive:
+                # no qualifying pools for chain, send to dao/vebal
+                for pool in pools_to_redistribute:
+                    amount = pool.total_to_incentives_usd
+                    pool.to_dao_usd += amount * self.run_config.fee_config.noncore_dao_share_pct
+                    pool.to_vebal_usd += amount * self.run_config.fee_config.noncore_vebal_share_pct
+                    pool.redirected_incentives_usd -= amount
+                    pool.to_aura_incentives_usd = Decimal(0)
+                    pool.to_bal_incentives_usd = Decimal(0)
+                    pool.total_to_incentives_usd = Decimal(0)
                 continue
 
             total_fees_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_redistribute)
@@ -238,8 +247,13 @@ class FeeAllocator:
                         pool.to_aura_incentives_usd = potential_aura
                         pool.to_bal_incentives_usd = Decimal(0)
                 
-                # After dust handling, if pool has no AURA and only dust BAL, it can't provide meaningful incentives
-                if pool.to_aura_incentives_usd < min_aura_incentive and pool.to_bal_incentives_usd < dust_threshold:
+                # After dust handling, if pool can't meet minimum requirements for meaningful incentives
+                # A pool needs either: AURA >= $800 OR BAL >= $75
+                # If it can't meet either minimum, it should be zeroed out
+                has_valid_aura = pool.to_aura_incentives_usd >= min_aura_incentive
+                has_valid_bal = pool.to_bal_incentives_usd >= dust_threshold
+
+                if not has_valid_aura and not has_valid_bal:
                     pools_to_zero.append(pool)
             
             # Redistribute from pools that can't provide meaningful incentives
