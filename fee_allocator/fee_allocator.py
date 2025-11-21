@@ -93,6 +93,15 @@ class FeeAllocator:
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
 
             if not pools_to_receive:
+                # no qualifying pools for chain, send to dao/vebal
+                for pool in pools_to_redistribute:
+                    amount = pool.total_to_incentives_usd
+                    pool.to_dao_usd += amount * self.run_config.fee_config.noncore_dao_share_pct
+                    pool.to_vebal_usd += amount * self.run_config.fee_config.noncore_vebal_share_pct
+                    pool.redirected_incentives_usd -= amount
+                    pool.to_aura_incentives_usd = Decimal(0)
+                    pool.to_bal_incentives_usd = Decimal(0)
+                    pool.total_to_incentives_usd = Decimal(0)
                 continue
 
             total_fees_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_redistribute)

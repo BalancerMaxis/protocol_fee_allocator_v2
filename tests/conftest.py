@@ -45,14 +45,9 @@ def chain(run_config, web3):
 @pytest.fixture
 def allocator(fee_period):
     input_fees = {
-        "mainnet": Decimal("1000000"),
-        "arbitrum": Decimal("1000000"),
-        "polygon": Decimal("1000000"),
-        "optimism": Decimal("1000000"),
-        "base": Decimal("1000000"),
-        "gnosis": Decimal("1000000"),
-        "avalanche": Decimal("1000000"),
-        "plasma": Decimal("1000000"),
+        "mainnet": Decimal("100000"),
+        "arbitrum": Decimal("100000"),
+        "base": Decimal("100000"),
     }
 
     return FeeAllocator(
