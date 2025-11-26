@@ -87,13 +87,11 @@ class FeeAllocator:
         5. Calls _filter_dusty_bal_incentives to handle dust amounts and final redistribution
         """
         min_amount = self.run_config.fee_config.min_vote_incentive_amount
-        
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
 
             if not pools_to_receive:
-                # no qualifying pools for chain, send to dao/vebal
                 for pool in pools_to_redistribute:
                     amount = pool.total_to_incentives_usd
                     pool.to_dao_usd += amount * self.run_config.fee_config.noncore_dao_share_pct
@@ -160,11 +158,9 @@ class FeeAllocator:
         """
         Ensures all pools meet the minimum AURA incentive threshold.
 
-        1. Identifies pools below the minimum AURA threshold (or with BAL-only overrides)
-        2. Moves their AURA amounts to BAL, creating a "debt" to be redistributed
-        3. Redistributes this debt from other pools' BAL to AURA proportionally
-        4. Ensures donor pools maintain the minimum threshold after transfers
-        5. Repeats until all pools meet the threshold or no more transfers are possible
+        1. Consolidate under-min pools by moving their AURA to BAL
+        2. Redistribute that debt to pools above min by moving their BAL to AURA
+        3. Rebalance to maintain target Aura/Balancer ratio
         """
         min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive * (1 - buffer))
         for chain in self.run_config.all_chains:
@@ -173,9 +169,7 @@ class FeeAllocator:
                 pools_below_min: List[PoolFee] = []
 
                 for pool in chain.core_pools:
-                    if pool.to_aura_incentives_usd < min_aura_incentive or (
-                        pool.voting_pool_override == "bal"
-                    ):
+                    if pool.to_aura_incentives_usd < min_aura_incentive or pool.voting_pool_override == "bal":
                         debt_to_aura += pool.to_aura_incentives_usd
                         pools_below_min.append(pool)
 
@@ -187,8 +181,7 @@ class FeeAllocator:
                     pool.to_aura_incentives_usd = Decimal(0)
 
                 pools_over_min = [
-                    p
-                    for p in chain.core_pools
+                    p for p in chain.core_pools
                     if p.to_aura_incentives_usd >= min_aura_incentive and p.to_bal_incentives_usd > 0
                 ]
 
@@ -198,20 +191,19 @@ class FeeAllocator:
                 pools_over_min.sort(key=lambda p: p.to_bal_incentives_usd, reverse=True)
                 debt_remaining = debt_to_aura
                 total_available_bal = sum(p.to_bal_incentives_usd for p in pools_over_min)
-                
+
                 if total_available_bal == 0:
                     break
-                
+
                 transfers_made = False
                 for pool in pools_over_min:
                     if debt_remaining <= 0:
                         break
-                    
+
                     pool_share = pool.to_bal_incentives_usd / total_available_bal
                     amount_to_transfer = min(
                         debt_remaining * pool_share,
                         pool.to_bal_incentives_usd,
-                        # ensure pool stays above minimum after transfer
                         max(Decimal(0), pool.to_aura_incentives_usd + pool.to_bal_incentives_usd - min_aura_incentive)
                     )
 
@@ -222,8 +214,31 @@ class FeeAllocator:
                         transfers_made = True
 
                 if not transfers_made:
-                    logger.warning(f"Warning: Could not redistribute AURA debt on {chain.name}. Remaining: {debt_to_aura}")
                     break
+
+            self._rebalance_aura_bal_split(chain, min_aura_incentive)
+
+    def _rebalance_aura_bal_split(self, chain, min_aura: Decimal):
+        pools = [p for p in chain.core_pools if not p.is_alliance_core_pool and not p.partner and p.total_to_incentives_usd > 0]
+        total = sum(p.to_aura_incentives_usd + p.to_bal_incentives_usd for p in pools)
+        if not total:
+            return
+
+        to_move = total * self.run_config.aura_vebal_share - sum(p.to_aura_incentives_usd for p in pools)
+
+        for pool in sorted(pools, key=lambda p: p.to_bal_incentives_usd if to_move > 0 else p.to_aura_incentives_usd, reverse=True):
+            if to_move > 0 and pool.to_bal_incentives_usd > 0 and pool.to_aura_incentives_usd >= min_aura:
+                move = min(pool.to_bal_incentives_usd, to_move)
+                pool.to_aura_incentives_usd += move
+                pool.to_bal_incentives_usd -= move
+                to_move -= move
+            elif to_move < 0:
+                available = pool.to_aura_incentives_usd - min_aura
+                if available > 0:
+                    move = min(available, abs(to_move))
+                    pool.to_bal_incentives_usd += move
+                    pool.to_aura_incentives_usd -= move
+                    to_move += move
 
     def _filter_dusty_bal_incentives(self):
         """
@@ -266,13 +281,11 @@ class FeeAllocator:
                         pool.to_bal_incentives_usd = Decimal(0)
                         pool.total_to_incentives_usd = Decimal(0)
                     
-                    # Redistribute to viable pools
                     for pool in pools_to_receive:
                         weight = pool.total_earned_fees_usd_twap / total_weight
                         amount = total_to_redistribute * weight
                         pool.total_to_incentives_usd += amount
                         pool.redirected_incentives_usd += amount
-                        
                         if pool.to_aura_incentives_usd >= pool.to_bal_incentives_usd:
                             pool.to_aura_incentives_usd += amount
                         else:
