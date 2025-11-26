@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1763711088,
+  "createdAt": 1764147635,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -182,7 +182,7 @@
       },
       "contractInputsValues": {
         "_to": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",
-        "_value": "10808011210"
+        "_value": "10816446151"
       }
     },
     {
@@ -206,7 +206,7 @@
       },
       "contractInputsValues": {
         "_to": "0xea06e1b4259730724885a39CE3ca670eFB020E26",
-        "_value": "102851760"
+        "_value": "78751924"
       }
     },
     {
@@ -254,7 +254,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "46916488500"
+        "_value": "46932153400"
       }
     }
   ]
