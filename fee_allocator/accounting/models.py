@@ -1,6 +1,8 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, model_validator, validator
 from decimal import Decimal
 from typing import Dict, NewType, Optional
+
+from bal_tools.ecosystem import HiddenHand
 
 
 Pools = Dict[NewType("PoolId", str), NewType("Symbol", str)]
@@ -24,18 +26,23 @@ class GlobalFeeConfig(BaseModel):
     min_aura_incentive: int
     min_existing_aura_incentive: int
     min_vote_incentive_amount: int
-    
+
     # Core pool fee splits
     vebal_share_pct: Decimal
     dao_share_pct: Decimal
     vote_incentive_pct: Decimal
-    
+
     # Non-core pool fee splits
     noncore_vebal_share_pct: Decimal
     noncore_dao_share_pct: Decimal
-    
+
     # Beets fee split (https://forum.balancer.fi/t/bip-800-deploy-balancer-v3-on-op-mainnet)
     beets_share_pct: Decimal
+
+    @model_validator(mode="after")
+    def set_dynamic_min_aura_incentive(self):
+        self.min_aura_incentive = int(HiddenHand().get_min_aura_incentive())
+        return self
 
 
 class AlliancePool(BaseModel):
