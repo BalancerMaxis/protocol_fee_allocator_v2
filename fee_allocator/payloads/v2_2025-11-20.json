@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1763711088,
+  "createdAt": 1764780157,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -72,9 +72,51 @@
       "contractInputsValues": {
         "_proposal": "0x621f3eb8fd5653e67afdb1f8a9e00ecd874b66cc9fa5a2cfa0733985196831fe",
         "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "_amount": "792537100",
+        "_amount": "273020700",
         "_maxTokensPerVote": "0",
         "_periods": "2"
+      }
+    },
+    {
+      "to": "0xcBf242F20D183B4116C22Dd5e441b9aE15b0d35A",
+      "value": "0",
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "_proposal",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "_token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "_amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "_maxTokensPerVote",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "_periods",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "name": "depositBribe",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "_proposal": "0x621f3eb8fd5653e67afdb1f8a9e00ecd874b66cc9fa5a2cfa0733985196831fe",
+        "_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "_amount": "519516400",
+        "_maxTokensPerVote": "0",
+        "_periods": "1"
       }
     },
     {
@@ -182,7 +224,7 @@
       },
       "contractInputsValues": {
         "_to": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",
-        "_value": "10808011210"
+        "_value": "10816446151"
       }
     },
     {
@@ -206,7 +248,7 @@
       },
       "contractInputsValues": {
         "_to": "0xea06e1b4259730724885a39CE3ca670eFB020E26",
-        "_value": "102851760"
+        "_value": "78751924"
       }
     },
     {
@@ -254,7 +296,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "46916488500"
+        "_value": "46932153400"
       }
     }
   ]
