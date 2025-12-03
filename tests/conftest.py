@@ -54,5 +54,6 @@ def allocator(fee_period):
         input_fees,
         fee_period,
         cache_dir=Path("tests/cache"),
-        use_cache=True
+        use_cache=True,
+        protocol_version="v3"
     )
