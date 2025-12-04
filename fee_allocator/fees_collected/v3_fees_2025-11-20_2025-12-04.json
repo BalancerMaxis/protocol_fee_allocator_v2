@@ -1,4 +1,9 @@
 {
   "optimism": 215508895,
-  "mainnet": 0
+  "mainnet": 17729846623,
+  "avalanche": 1517452699,
+  "plasma": 6184699234,
+  "base": 7301486077,
+  "arbitrum": 4853241362,
+  "gnosis": 1494219633
 }
