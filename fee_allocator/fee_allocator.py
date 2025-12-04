@@ -541,10 +541,11 @@ class FeeAllocator:
         beets_df = df[df["platform"] == "beets"].iloc[0]
 
         platform_groups = {}
-        for platform_name in bribe_df["bribe_platform"].unique():
-            platform_bribes = bribe_df[bribe_df["bribe_platform"] == platform_name]
-            if not platform_bribes.empty and platform_bribes["amount"].sum() > 0:
-                platform_groups[platform_name] = platform_bribes
+        if not bribe_df.empty:
+            for platform_name in bribe_df["bribe_platform"].unique():
+                platform_bribes = bribe_df[bribe_df["bribe_platform"] == platform_name]
+                if not platform_bribes.empty and platform_bribes["amount"].sum() > 0:
+                    platform_groups[platform_name] = platform_bribes
 
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
