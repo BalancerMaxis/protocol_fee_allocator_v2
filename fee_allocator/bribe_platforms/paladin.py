@@ -65,17 +65,17 @@ class PaladinPlatform(BribePlatform):
             min_reward_per_vote = 50
 
             quest_board.createRangedQuest(
-                row["target"],
-                self.usdc_address,
-                "true",
-                2,
-                min_reward_per_vote,
-                max_reward_per_vote,
-                total_reward_amount,
-                fee_amount,
-                0,
-                1,
-                "[]"
+                row["target"],           # gauge
+                self.usdc_address,       # rewardToken
+                "true",                  # startNextPeriod
+                2,                       # duration
+                min_reward_per_vote,     # minRewardPerVote
+                max_reward_per_vote,     # maxRewardPerVote
+                total_reward_amount,     # totalRewardAmount
+                fee_amount,              # feeAmount
+                0,                       # voteType (NORMAL)
+                1,                       # closeType (ROLLOVER)
+                "[]"                     # voterList
             )
 
 
