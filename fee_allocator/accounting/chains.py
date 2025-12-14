@@ -249,8 +249,8 @@ class CorePoolChain(AbstractCorePoolChain):
                 continue
 
             tvl_threshold = thresholds.v2_min_tvl if protocol_version == 2 else thresholds.v3_min_tvl
-            
-            if tvl_threshold == 0:
+
+            if tvl_threshold == 0 or pool.auto_include:
                 self.alliance_pools.append(pool)
                 logger.info(f"v{protocol_version} Alliance pool: {pool.pool_id} added as alliance pool")
                 continue

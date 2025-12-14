@@ -1,11 +1,9 @@
 from typing import Dict, Optional, Tuple, Any, List
 import pandas as pd
-from web3 import Web3
 from .base import BribePlatform
 from bal_tools.safe_tx_builder import SafeContract
 import json
 from pathlib import Path
-from fee_allocator.logger import logger
 
 
 class PaladinPlatform(BribePlatform):
@@ -60,64 +58,30 @@ class PaladinPlatform(BribePlatform):
             fee_ratio = platform_fee_ratios[platform]
 
             total_reward_amount = int(mantissa * 10000 / (10000 + fee_ratio))
-            fee_amount = mantissa - total_reward_amount
+            fee_amount = (total_reward_amount * fee_ratio) // 10000
+
+            reward_per_period = total_reward_amount // 2
+            max_reward_per_vote = max(reward_per_period // 1000, 50)
+            min_reward_per_vote = 50
 
             quest_board.createRangedQuest(
                 row["target"],
                 self.usdc_address,
-                True,
+                "true",
                 2,
-                1,
-                total_reward_amount,
+                min_reward_per_vote,
+                max_reward_per_vote,
                 total_reward_amount,
                 fee_amount,
                 0,
                 1,
-                []
+                "[]"
             )
 
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
-        """Validate gauge has USDC as reward token with correct distributor"""
-        try:
-            base_dir = Path(__file__).parent.parent
-            with open(f"{base_dir}/abi/gauge.json", "r") as f:
-                gauge_abi = json.load(f)
-
-            w3 = self.run_config.mainnet.web3
-            usdc = Web3.to_checksum_address(self.usdc_address)
-            gauge = Web3.to_checksum_address(gauge_address)
-            contract = w3.eth.contract(address=gauge, abi=gauge_abi)
-
-            try:
-                usdc_found = usdc in [contract.functions.reward_tokens(i).call() for i in range(8)]
-            except Exception:
-                return False, "Gauge has incompatible implementation"
-
-            if not usdc_found:
-                return False, f"USDC ({usdc}) not found in gauge reward tokens"
-
-            try:
-                distributor = contract.functions.reward_data(usdc).call()[1]
-                has_correct_distributor = (
-                    distributor.lower() == self.bal_quest_board.lower() or
-                    distributor.lower() == self.aura_quest_board.lower()
-                )
-
-                if not has_correct_distributor:
-                    valid_distributors = [
-                        f"Balancer: {self.bal_quest_board}",
-                        f"Aura: {self.aura_quest_board}"
-                    ]
-                    return False, f"Incorrect distributor. Valid: {', '.join(valid_distributors)}"
-
-            except Exception:
-                return False, "Could not verify distributor"
-
-            return True, None
-
-        except Exception as e:
-            return False, f"Validation error: {str(e)}"
+        """No validation needed for ROLLOVER close type"""
+        return True, None
 
     @property
     def platform_name(self) -> str:
@@ -130,40 +94,3 @@ class PaladinPlatform(BribePlatform):
 
     def get_platform_for_market(self, market: str, voting_pool_override: Optional[str]) -> str:
         return "paladin"
-
-    def check_all_gauge_requirements(self, pools: List[Any]) -> List[Dict]:
-        """Check all Paladin gauges for requirements and return issues"""
-        gauges_with_issues = []
-
-        for pool in pools:
-            if pool.market_override != "paladin":
-                continue
-
-            valid, error_msg = self.validate_gauge_requirements(pool.gauge_address)
-            if not valid:
-                action_needed = []
-
-                # Determine which distributors are needed
-                if pool.to_bal_incentives_usd > 0:
-                    action_needed.append(f"Balancer distributor ({self.bal_quest_board})")
-                if pool.to_aura_incentives_usd > 0:
-                    action_needed.append(f"Aura distributor ({self.aura_quest_board})")
-
-                if action_needed:
-                    if "not found in gauge reward tokens" in error_msg:
-                        action_msg = f"Add USDC ({self.usdc_address}) as reward token and set {' and '.join(action_needed)}"
-                    elif "Incorrect distributor" in error_msg:
-                        action_msg = f"Set {' and '.join(action_needed)}"
-                    else:
-                        action_msg = error_msg
-
-                    logger.warning(f"Paladin gauge {pool.gauge_address} missing requirements: {action_msg}")
-                    gauges_with_issues.append({
-                        "gauge": pool.gauge_address,
-                        "pool_id": pool.pool_id,
-                        "chain": pool.chain.name,
-                        "action": action_msg,
-                        "amount": float(pool.total_to_incentives_usd)
-                    })
-
-        return gauges_with_issues

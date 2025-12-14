@@ -11,10 +11,10 @@ InputFees = Dict[NewType("CorePoolChainName", str), NewType("FeesCollected", int
 
 class PoolOverride(BaseModel):
     """
-    Represents pool-specific overrides for voting pool and market platforms.
+    Represents pool-specific overrides for voting pool allocation and bribe platform.
     """
-    voting_pool_override: Optional[str] = None  # "bal" or "aura"
-    market_override: str = "hh"  # "hh" (HiddenHand) or "paladin" (Paladin Quest)
+    voting_pool_override: Optional[str] = None  # "bal", "aura", or "split"
+    market_override: Optional[str] = None  # "stakedao" or "paladin" to override default routing
 
 
 class GlobalFeeConfig(BaseModel):
@@ -39,6 +39,10 @@ class GlobalFeeConfig(BaseModel):
     # Beets fee split (https://forum.balancer.fi/t/bip-800-deploy-balancer-v3-on-op-mainnet)
     beets_share_pct: Decimal
 
+    # Default bribe platforms (can be overridden per-pool via market_override)
+    bal_bribe_platform: str = "hh"
+    aura_bribe_platform: str = "hh"
+
     @model_validator(mode="after")
     def set_dynamic_min_aura_incentive(self):
         self.min_aura_incentive = int(HiddenHand().get_min_aura_incentive())
@@ -54,6 +58,7 @@ class AlliancePool(BaseModel):
     partner: str
     eligibility_date: str
     active: bool
+    auto_include: bool = False
 
 
 class AllianceMember(BaseModel):
