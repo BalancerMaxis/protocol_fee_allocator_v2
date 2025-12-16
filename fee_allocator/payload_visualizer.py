@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import requests
 
 from rich.console import Console
@@ -28,9 +28,7 @@ class PayloadVisualizer:
     
     # Transfer group types for method categorization
     TRANSFER_GROUPS = ["veBAL Transfers", "DAO Transfers", "Partner Transfers", "Alliance Transfers", "Beets Transfers", "Unknown Transfers"]
-
-    USDC_ADDRESS = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
-
+    
     def __init__(self):
         self.console = Console()
         self.book = AddrBook("mainnet").flatbook
@@ -74,11 +72,6 @@ class PayloadVisualizer:
             partner_addresses.append(ezkl_addr)
             partner_names[ezkl_addr] = "ezkl"
 
-        quantamm_addr = "0xd785201fd2d9be7602f6682296bb415530c027ef"
-        if quantamm_addr not in partner_addresses:
-            partner_addresses.append(quantamm_addr)
-            partner_names[quantamm_addr] = "QuantAMM"
-
         return alliance_addresses, alliance_names, partner_addresses, partner_names
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
@@ -96,25 +89,25 @@ class PayloadVisualizer:
         """Format address with name lookup"""
         if not address:
             return ""
-
-        addr_lower = address.lower()
-
-        # Check partners first (includes QuantAMM)
-        if addr_lower in self.partner_names:
-            partner_name = self.partner_names[addr_lower]
-            return f"{partner_name} ({address[:6]}...{address[-4:]})"
-
-        # Check alliance members
-        if addr_lower in self.alliance_names:
-            alliance_name = self.alliance_names[addr_lower]
-            return f"{alliance_name} ({address[:6]}...{address[-4:]})"
-
-        # Check if it's a known address in the book
+        
+        # Check if it's a known address
         for key, value in self.book.items():
             if value and value.lower() == address.lower():
                 parts = key.split("/")
                 name = parts[-1].replace("_", " ").title()
                 return f"{name} ({address[:6]}...{address[-4:]})"
+        
+        addr_lower = address.lower()
+        
+        # Check if it's an alliance member
+        if addr_lower in self.alliance_names:
+            alliance_name = self.alliance_names[addr_lower]
+            return f"{alliance_name} ({address[:6]}...{address[-4:]})"
+        
+        # Check if it's a partner
+        if addr_lower in self.partner_names:
+            partner_name = self.partner_names[addr_lower]
+            return f"{partner_name} ({address[:6]}...{address[-4:]})"
         
         # Special case for Beets Treasury
         if addr_lower == "0xea06e3e20658d2e27dcd1a6d5248fd3667e66e26":
@@ -379,28 +372,19 @@ class PayloadVisualizer:
             method = tx.get("contractMethod", {}).get("name", "")
             if method in ["createRangedQuest", "createFixedQuest"]:
                 gauge = tx.get("contractInputsValues", {}).get("gauge", "")
-                data["col1"] = self.format_address(gauge)
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
                 # For Paladin, add totalRewardAmount + feeAmount to show full allocated amount
                 total_reward = int(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
                 fee_amount = int(tx.get("contractInputsValues", {}).get("feeAmount", "0"))
                 data["col2"] = self.format_amount(str(total_reward + fee_amount))
-                # Just show "USDC" for reward token in bribes
-                reward_token = tx.get("contractInputsValues", {}).get("rewardToken", "")
-                if reward_token.lower() == self.USDC_ADDRESS:
-                    data["col3"] = "USDC"
-                else:
-                    data["col3"] = self.format_address(reward_token)
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
                 data["col4"] = "Paladin"
             elif method == "createBounty":
                 gauge = tx.get("contractInputsValues", {}).get("gauge", "")
-                data["col1"] = self.format_address(gauge)
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
                 amount = tx.get("contractInputsValues", {}).get("totalRewardAmount", "0")
                 data["col2"] = self.format_amount(amount)
-                reward_token = tx.get("contractInputsValues", {}).get("rewardToken", "")
-                if reward_token.lower() == self.USDC_ADDRESS:
-                    data["col3"] = "USDC"
-                else:
-                    data["col3"] = self.format_address(reward_token)
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
                 data["col4"] = "StakeDAO v1"
             elif method == "createCampaign":
                 params_str = tx.get("contractInputsValues", {}).get("params", "")
@@ -414,24 +398,17 @@ class PayloadVisualizer:
                     params = ast.literal_eval(params_str)
                 # params = (chainId, gauge, manager, token, periods, maxReward, totalReward, whitelist, hook, isWhitelist)
                 gauge = params[1]  # gauge address
-                data["col1"] = self.format_address(gauge)
+                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
                 token = params[3]  # reward token
-                if token.lower() == self.USDC_ADDRESS:
-                    data["col3"] = "USDC"
-                else:
-                    data["col3"] = self.format_address(token)
+                data["col3"] = self.format_address(token)
                 amount = str(params[6])  # totalRewardAmount
                 data["col2"] = self.format_amount(amount)
                 data["col4"] = "StakeDAO v2"
             else:
                 proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
-                data["col1"] = self.format_address(proposal)
+                data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
                 data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
-                reward_token = tx.get("contractInputsValues", {}).get("_token", "")
-                if reward_token.lower() == self.USDC_ADDRESS:
-                    data["col3"] = "USDC"
-                else:
-                    data["col3"] = self.format_address(reward_token)
+                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
                 data["col4"] = "HiddenHand"
         
         elif group_name in self.TRANSFER_GROUPS:
@@ -450,11 +427,7 @@ class PayloadVisualizer:
                 data["col3"] = self.format_address(token_addr)
         
         elif group_name == "Token Approvals":
-            token_addr = tx.get("to", "")
-            if token_addr.lower() == self.USDC_ADDRESS:
-                data["col1"] = "USDC"
-            else:
-                data["col1"] = self.format_address(token_addr)
+            data["col1"] = self.format_address(tx.get("to", ""))
             data["col2"] = self.format_address(tx.get("contractInputsValues", {}).get("_spender", ""))
             data["col3"] = self.format_amount(tx.get("contractInputsValues", {}).get("_value", "0"))
         
@@ -463,7 +436,7 @@ class PayloadVisualizer:
     def get_table_headers(self, group_name: str) -> List[str]:
         """Get table headers based on transaction group"""
         if "Bribe" in group_name:
-            return ["Proposal", "Amount", "Token", "Market"]
+            return ["Gauge/Proposal", "Amount", "Token", "Market"]
         elif group_name in self.TRANSFER_GROUPS:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
@@ -544,7 +517,7 @@ class PayloadVisualizer:
         
         if totals['partner_usdc'] > 0:
             md.append(f"**Partner Fees:** ${totals['partner_usdc']/Decimal(1e6):,.2f} ({metrics.get('partner_pct', 0)}% of total)\n")
-
+        
         md.append(f"\n### 💰 **TOTAL USDC DISTRIBUTED: ${totals['total_usdc']/Decimal(1e6):,.2f}**\n")
         
         if 'allocation_efficiency' in metrics:
@@ -599,8 +572,7 @@ class PayloadVisualizer:
         
         # Add summary
         md.append(self.generate_markdown_summary(payload, groups, total_fees_collected, recon_data))
-
-
+        
         # Check for gauge issues
         gauge_issues = self.load_gauge_issues(gauge_issues_path)
         if gauge_issues:
