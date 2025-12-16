@@ -1,0 +1,284 @@
+{
+  "total_usdc": "6577.782282500361283903292685",
+  "total_usdc_raw": 6577782282,
+  "periods_count": 9,
+  "periods": [
+    {
+      "period": "2025-04-24 to 2025-05-08",
+      "total": "74.16172512121201520047660587",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "95.4150290903167296476236",
+          "pool_share": "0.7426288528708881198572391170",
+          "allocated_amount": "95.41502850376159288640610819",
+          "partner_share_pct": "0.5",
+          "partner_amount": "47.70751425188079644320305410"
+        },
+        {
+          "pool_id": "0xd4ed17bbf48af09b87fd7d8c60970f5da79d4852",
+          "chain": "mainnet",
+          "has_gauge": false,
+          "earned_fees": "33.0677637899450672938792",
+          "pool_share": "0.2573711471291118801427608830",
+          "allocated_amount": "33.06776358666402344659193971",
+          "partner_share_pct": "0.8",
+          "partner_amount": "26.45421086933121875727355177"
+        }
+      ]
+    },
+    {
+      "period": "2025-05-08 to 2025-05-22",
+      "total": "480.5063702021535042601699892",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "958.5093295334281736639985916",
+          "pool_share": "0.9999874828911354835621853460",
+          "allocated_amount": "958.5093295334281736639985916",
+          "partner_share_pct": "0.5",
+          "partner_amount": "479.2546647667140868319992958"
+        },
+        {
+          "pool_id": "0xd4ed17bbf48af09b87fd7d8c60970f5da79d4852",
+          "chain": "mainnet",
+          "has_gauge": false,
+          "earned_fees": "0.01199791580464285525730000000",
+          "pool_share": "0.00001251710886451643781465400366",
+          "allocated_amount": "0.01199791580464285525730000000",
+          "partner_share_pct": "0.8",
+          "partner_amount": "0.009598332643714284205840000000"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "2.484214205591406287929706861",
+          "pool_share": "1",
+          "allocated_amount": "2.484214205591406287929706861",
+          "partner_share_pct": "0.5",
+          "partner_amount": "1.242107102795703143964853430"
+        }
+      ]
+    },
+    {
+      "period": "2025-05-22 to 2025-06-05",
+      "total": "1144.930762617622548465798323",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "2056.246190444725498325285000",
+          "pool_share": "1",
+          "allocated_amount": "2056.246190444725498325285000",
+          "partner_share_pct": "0.5",
+          "partner_amount": "1028.123095222362749162642500"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "233.6153347905195986063116459",
+          "pool_share": "1",
+          "allocated_amount": "233.6153347905195986063116458",
+          "partner_share_pct": "0.5",
+          "partner_amount": "116.8076673952597993031558229"
+        }
+      ]
+    },
+    {
+      "period": "2025-06-05 to 2025-06-19",
+      "total": "101.0003651637071985886467849",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "19.80264187100861393477592105",
+          "pool_share": "1",
+          "allocated_amount": "19.80264187100861393477592105",
+          "partner_share_pct": "0.5",
+          "partner_amount": "9.901320935504306967387960525"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "182.1980896188176468812549779",
+          "pool_share": "1",
+          "allocated_amount": "182.1980884564057832425176488",
+          "partner_share_pct": "0.5",
+          "partner_amount": "91.09904422820289162125882440"
+        }
+      ]
+    },
+    {
+      "period": "2025-06-19 to 2025-07-03",
+      "total": "1817.531229714934442202493830",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "3322.858281136683633056703242",
+          "pool_share": "1",
+          "allocated_amount": "3322.858263257774427457332240",
+          "partner_share_pct": "0.5",
+          "partner_amount": "1661.429131628887213728666120"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "312.2041961720944569476554206",
+          "pool_share": "1",
+          "allocated_amount": "312.2041961720944569476554206",
+          "partner_share_pct": "0.5",
+          "partner_amount": "156.1020980860472284738277103"
+        }
+      ]
+    },
+    {
+      "period": "2025-07-03 to 2025-07-17",
+      "total": "159.1650859192276357634283248",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "118.4224023386547125962532699",
+          "pool_share": "1",
+          "allocated_amount": "118.4224023386547125962532699",
+          "partner_share_pct": "0.5",
+          "partner_amount": "59.21120116932735629812663495"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "199.9077694998005589306033797",
+          "pool_share": "1",
+          "allocated_amount": "199.9077694998005589306033797",
+          "partner_share_pct": "0.5",
+          "partner_amount": "99.95388474990027946530168985"
+        }
+      ]
+    },
+    {
+      "period": "2025-07-17 to 2025-07-31",
+      "total": "429.9890809054184029144323892",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "690.4472348110026376859537763",
+          "pool_share": "1",
+          "allocated_amount": "690.4472348110026376859537764",
+          "partner_share_pct": "0.5",
+          "partner_amount": "345.2236174055013188429768882"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "169.5309269998341681429110021",
+          "pool_share": "1",
+          "allocated_amount": "169.5309269998341681429110021",
+          "partner_share_pct": "0.5",
+          "partner_amount": "84.76546349991708407145550105"
+        }
+      ]
+    },
+    {
+      "period": "2025-07-31 to 2025-08-14",
+      "total": "521.9602726295442262287539934",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "428.9860011887731234167670132",
+          "pool_share": "1",
+          "allocated_amount": "428.9860002510825997663777162",
+          "partner_share_pct": "0.5",
+          "partner_amount": "214.4930001255412998831888581"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "614.9345450080058526911302706",
+          "pool_share": "1",
+          "allocated_amount": "614.9345450080058526911302706",
+          "partner_share_pct": "0.5",
+          "partner_amount": "307.4672725040029263455651353"
+        }
+      ]
+    },
+    {
+      "period": "2025-08-14 to 2025-08-28",
+      "total": "1848.537390226541310279092445",
+      "pools": [
+        {
+          "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+          "chain": "mainnet",
+          "has_gauge": true,
+          "earned_fees": "467.3260022358989233406383185",
+          "pool_share": "0.9999950914622752299197291134",
+          "allocated_amount": "467.3260022358989233406383185",
+          "partner_share_pct": "0.5",
+          "partner_amount": "233.6630011179494616703191592"
+        },
+        {
+          "pool_id": "0xd4ed17bbf48af09b87fd7d8c60970f5da79d4852",
+          "chain": "mainnet",
+          "has_gauge": false,
+          "earned_fees": "0.002293898571428571400000000000",
+          "pool_share": "0.000004908537724770080270886596216",
+          "allocated_amount": "0.002293898571428571400000000000",
+          "partner_share_pct": "0.8",
+          "partner_amount": "0.001835118857142857120000000000"
+        },
+        {
+          "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+          "chain": "base",
+          "has_gauge": true,
+          "earned_fees": "3229.745107979469411503306573",
+          "pool_share": "1",
+          "allocated_amount": "3229.745107979469411503306573",
+          "partner_share_pct": "0.5",
+          "partner_amount": "1614.872553989734705751653286"
+        }
+      ]
+    }
+  ],
+  "pool_totals": {
+    "mainnet_0x6b61d8680c4f9e560c8306807908553f95c749c5": {
+      "pool_id": "0x6b61d8680c4f9e560c8306807908553f95c749c5",
+      "chain": "mainnet",
+      "has_gauge": true,
+      "partner_share_pct": "0.5",
+      "total_partner_amount": "4079.006546623668589828510471"
+    },
+    "mainnet_0xd4ed17bbf48af09b87fd7d8c60970f5da79d4852": {
+      "pool_id": "0xd4ed17bbf48af09b87fd7d8c60970f5da79d4852",
+      "chain": "mainnet",
+      "has_gauge": false,
+      "partner_share_pct": "0.8",
+      "total_partner_amount": "26.46564432083207589859939177"
+    },
+    "base_0xb4161aea25bd6c5c8590ad50deb4ca752532f05d": {
+      "pool_id": "0xb4161aea25bd6c5c8590ad50deb4ca752532f05d",
+      "chain": "base",
+      "has_gauge": true,
+      "partner_share_pct": "0.5",
+      "total_partner_amount": "2472.310091555860618176182823"
+    }
+  }
+}

@@ -190,7 +190,7 @@ def generate_quantamm_retroactive_report(payload_path=None):
     else:
         report_lines.append(f"2. Add ${amount:,.2f} (raw: {raw_amount}) to QuantAMM partner transfer (`{quantamm_multisig}`)")
 
-    output_file = Path(__file__).parent / "retroactive_fees.json"
+    output_file = Path(__file__).parent / "quantamm_retroactive_fees.json"
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
 
