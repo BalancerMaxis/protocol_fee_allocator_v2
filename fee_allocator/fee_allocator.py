@@ -15,7 +15,7 @@ from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.logger import logger
 from fee_allocator.payload_visualizer import save_markdown_report
-from fee_allocator.bribe_platforms import BribePlatformFactory, PaladinPlatform
+from fee_allocator.bribe_platforms import get_platform
 
 load_dotenv()
 
@@ -129,9 +129,7 @@ class FeeAllocator:
         Generates all fee allocation artifacts (CSVs and payload).
         """
         logger.info("generating fee allocation artifacts")
-        
-        self._check_paladin_gauge_requirements()
-        
+
         incentives_path = self.generate_incentives_csv()
         bribe_path = self.generate_bribe_csv()
         alliance_path = self.generate_alliance_csv()
@@ -304,14 +302,15 @@ class FeeAllocator:
                 if not core_pool.gauge_address:
                     logger.warning(f"Pool {core_pool.pool_id} has no gauge address")
 
-                platform = BribePlatformFactory.get_platform(core_pool.market_override, self.book, self.run_config)
+                bal_platform = core_pool.market_override or self.run_config.fee_config.bal_bribe_platform
+                aura_platform = core_pool.market_override or self.run_config.fee_config.aura_bribe_platform
 
                 output.append(
                     {
                         "target": core_pool.gauge_address,
                         "platform": "balancer",
                         "amount": round(core_pool.to_bal_incentives_usd, 4),
-                        "bribe_platform": platform.get_platform_for_market("balancer", core_pool.voting_pool_override),
+                        "bribe_platform": bal_platform,
                     },
                 )
                 output.append(
@@ -319,7 +318,7 @@ class FeeAllocator:
                         "target": core_pool.gauge_address,
                         "platform": "aura",
                         "amount": round(core_pool.to_aura_incentives_usd, 4),
-                        "bribe_platform": platform.get_platform_for_market("aura", core_pool.voting_pool_override),
+                        "bribe_platform": aura_platform,
                     },
                 )
 
@@ -551,17 +550,8 @@ class FeeAllocator:
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
         for platform_name, platform_bribes in platform_groups.items():
-            try:
-                platform = BribePlatformFactory.get_platform(
-                    platform_name,
-                    self.book,
-                    self.run_config
-                )
-
-                platform.process_bribes(platform_bribes, builder, usdc)
-            except NotImplementedError as e:
-                logger.warning(f"Platform {platform_name} not yet implemented: {e}")
-                continue
+            platform = get_platform(platform_name, self.book, self.run_config)
+            platform.process_bribes(platform_bribes, builder, usdc)
 
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
@@ -615,34 +605,6 @@ class FeeAllocator:
         builder.output_payload(output_path)
         
         return output_path
-    
-    def _check_paladin_gauge_requirements(self):
-        """Check Paladin gauges for requirements and log issues"""
-        paladin = PaladinPlatform(self.book, self.run_config)
-        gauges_with_issues = []
-
-        for chain in self.run_config.all_chains:
-            for pool in chain.core_pools:
-                if pool.market_override != "paladin":
-                    continue
-
-                is_valid, error_msg = paladin.validate_gauge_requirements(pool.gauge_address)
-
-                if not is_valid:
-                    pool.market_override = "hh"
-                    logger.warning(f"Paladin gauge {pool.gauge_address} missing requirements, falling back to HiddenHand: {error_msg}")
-                    gauges_with_issues.append({
-                        "gauge": pool.gauge_address,
-                        "pool_id": pool.pool_id,
-                        "chain": chain.name,
-                        "action": error_msg,
-                        "amount": float(pool.total_to_incentives_usd)
-                    })
-
-        if gauges_with_issues:
-            issues_file = base_dir / "allocations" / f"{self.run_config.protocol_version}_paladin_gauge_status_{self.start_date}_{self.end_date}.json"
-            with open(issues_file, "w") as f:
-                json.dump(gauges_with_issues, f, indent=2)
 
     def recon(self) -> None:
         """

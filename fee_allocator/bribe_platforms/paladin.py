@@ -60,68 +60,49 @@ class PaladinPlatform(BribePlatform):
             fee_ratio = platform_fee_ratios[platform]
 
             total_reward_amount = int(mantissa * 10000 / (10000 + fee_ratio))
-            fee_amount = mantissa - total_reward_amount
+            fee_amount = (total_reward_amount * fee_ratio) // 10000
+
+            reward_per_period = total_reward_amount // 2
+            max_reward_per_vote = max(reward_per_period // 1000, 50)
+            min_reward_per_vote = 50
 
             quest_board.createRangedQuest(
-                row["target"],
-                self.usdc_address,
-                True,
-                2,
-                1,
-                total_reward_amount,
-                total_reward_amount,
-                fee_amount,
-                0,
-                1,
-                []
+                row["target"],           # gauge
+                self.usdc_address,       # rewardToken
+                "true",                  # startNextPeriod
+                2,                       # duration
+                min_reward_per_vote,     # minRewardPerVote
+                max_reward_per_vote,     # maxRewardPerVote
+                total_reward_amount,     # totalRewardAmount
+                fee_amount,              # feeAmount
+                0,                       # voteType (NORMAL)
+                1,                       # closeType (ROLLOVER)
+                "[]"                     # voterList
             )
 
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
-        """Validate gauge has USDC as reward token with correct distributor"""
-        try:
-            base_dir = Path(__file__).parent.parent
-            with open(f"{base_dir}/abi/gauge.json", "r") as f:
-                gauge_abi = json.load(f)
+        base_dir = Path(__file__).parent.parent
+        with open(f"{base_dir}/abi/gauge.json", "r") as f:
+            gauge_abi = json.load(f)
 
-            w3 = self.run_config.mainnet.web3
-            usdc = Web3.to_checksum_address(self.usdc_address)
-            gauge = Web3.to_checksum_address(gauge_address)
-            contract = w3.eth.contract(address=gauge, abi=gauge_abi)
+        w3 = self.run_config.mainnet.web3
+        usdc = Web3.to_checksum_address(self.usdc_address)
+        gauge = Web3.to_checksum_address(gauge_address)
+        contract = w3.eth.contract(address=gauge, abi=gauge_abi)
 
-            try:
-                usdc_found = usdc in [contract.functions.reward_tokens(i).call() for i in range(8)]
-            except Exception:
-                return False, "Gauge has incompatible implementation"
+        reward_tokens = [contract.functions.reward_tokens(i).call() for i in range(8)]
+        if usdc not in reward_tokens:
+            return False, f"USDC ({usdc}) not found in gauge reward tokens"
 
-            if not usdc_found:
-                return False, f"USDC ({usdc}) not found in gauge reward tokens"
+        distributor = contract.functions.reward_data(usdc).call()[1]
+        if distributor.lower() not in [self.bal_quest_board.lower(), self.aura_quest_board.lower()]:
+            return False, f"Incorrect distributor {distributor}. Expected: {self.bal_quest_board} or {self.aura_quest_board}"
 
-            try:
-                distributor = contract.functions.reward_data(usdc).call()[1]
-                has_correct_distributor = (
-                    distributor.lower() == self.bal_quest_board.lower() or
-                    distributor.lower() == self.aura_quest_board.lower()
-                )
-
-                if not has_correct_distributor:
-                    valid_distributors = [
-                        f"Balancer: {self.bal_quest_board}",
-                        f"Aura: {self.aura_quest_board}"
-                    ]
-                    return False, f"Incorrect distributor. Valid: {', '.join(valid_distributors)}"
-
-            except Exception:
-                return False, "Could not verify distributor"
-
-            return True, None
-
-        except Exception as e:
-            return False, f"Validation error: {str(e)}"
+        return True, None
 
     @property
     def platform_name(self) -> str:
-        """Platform identifier for reporting"""
         return "paladin"
 
     @property
@@ -133,6 +114,7 @@ class PaladinPlatform(BribePlatform):
 
     def check_all_gauge_requirements(self, pools: List[Any]) -> List[Dict]:
         """Check all Paladin gauges for requirements and return issues"""
+
         gauges_with_issues = []
 
         for pool in pools:
@@ -143,7 +125,6 @@ class PaladinPlatform(BribePlatform):
             if not valid:
                 action_needed = []
 
-                # Determine which distributors are needed
                 if pool.to_bal_incentives_usd > 0:
                     action_needed.append(f"Balancer distributor ({self.bal_quest_board})")
                 if pool.to_aura_incentives_usd > 0:
