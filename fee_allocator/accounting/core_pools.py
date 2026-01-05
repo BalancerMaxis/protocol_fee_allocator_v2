@@ -96,7 +96,7 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
         self.voting_pool_override = self._get_voting_pool_override()
         self.market_override = self._get_market_override()
-        
+
         self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
         self.total_to_incentives_usd = self._total_to_incentives_usd()
@@ -138,10 +138,10 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
     def _get_voting_pool_override(self):
         pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
         return pool_override.voting_pool_override if pool_override else None
-    
-    def _get_market_override(self) -> str:
+
+    def _get_market_override(self):
         pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
-        return pool_override.market_override if pool_override else "hh"
+        return pool_override.market_override if pool_override else None
     
 
     def _earned_fee_share_of_chain_usd(self) -> Decimal:

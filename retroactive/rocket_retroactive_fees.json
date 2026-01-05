@@ -1,0 +1,342 @@
+{
+  "total_usdc": "2128.9493574999997",
+  "total_usdc_raw": 2128949357,
+  "periods_count": 13,
+  "pool_totals": {
+    "0x5418a64e0cdb20548acb394f5d00a089baf02161": {
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "Arbitrum",
+      "earned_fees": "2653.1632",
+      "partner_share": "464.30355999999995"
+    },
+    "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347": {
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "Base",
+      "earned_fees": "4617.9883",
+      "partner_share": "808.1479525"
+    },
+    "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be": {
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "Optimism",
+      "earned_fees": "4894.2734",
+      "partner_share": "856.4978449999998"
+    }
+  },
+  "periods": [
+    {
+      "period_start": "2025-05-22",
+      "period_end": "2025-06-05",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 101.327,
+      "partner_share": 17.732225
+    },
+    {
+      "period_start": "2025-06-05",
+      "period_end": "2025-06-19",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 237.0952,
+      "partner_share": 41.491659999999996
+    },
+    {
+      "period_start": "2025-06-05",
+      "period_end": "2025-06-19",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 75.7072,
+      "partner_share": 13.248759999999999
+    },
+    {
+      "period_start": "2025-06-19",
+      "period_end": "2025-07-03",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 229.0584,
+      "partner_share": 40.08522
+    },
+    {
+      "period_start": "2025-06-19",
+      "period_end": "2025-07-03",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 78.714,
+      "partner_share": 13.774949999999999
+    },
+    {
+      "period_start": "2025-07-03",
+      "period_end": "2025-07-17",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 193.6637,
+      "partner_share": 33.891147499999995
+    },
+    {
+      "period_start": "2025-07-03",
+      "period_end": "2025-07-17",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 276.8036,
+      "partner_share": 48.44063
+    },
+    {
+      "period_start": "2025-07-03",
+      "period_end": "2025-07-17",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 108.5875,
+      "partner_share": 19.0028125
+    },
+    {
+      "period_start": "2025-07-17",
+      "period_end": "2025-07-31",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 1536.3933,
+      "partner_share": 268.86882749999995
+    },
+    {
+      "period_start": "2025-07-17",
+      "period_end": "2025-07-31",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 320.2039,
+      "partner_share": 56.03568249999999
+    },
+    {
+      "period_start": "2025-07-17",
+      "period_end": "2025-07-31",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 188.1955,
+      "partner_share": 32.9342125
+    },
+    {
+      "period_start": "2025-07-31",
+      "period_end": "2025-08-14",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 553.8101,
+      "partner_share": 96.9167675
+    },
+    {
+      "period_start": "2025-07-31",
+      "period_end": "2025-08-14",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 363.5477,
+      "partner_share": 63.620847499999996
+    },
+    {
+      "period_start": "2025-07-31",
+      "period_end": "2025-08-14",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 210.9926,
+      "partner_share": 36.923705
+    },
+    {
+      "period_start": "2025-08-14",
+      "period_end": "2025-08-28",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 771.0331,
+      "partner_share": 134.9307925
+    },
+    {
+      "period_start": "2025-08-14",
+      "period_end": "2025-08-28",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 416.5546,
+      "partner_share": 72.897055
+    },
+    {
+      "period_start": "2025-08-14",
+      "period_end": "2025-08-28",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 173.4008,
+      "partner_share": 30.345139999999997
+    },
+    {
+      "period_start": "2025-08-28",
+      "period_end": "2025-09-11",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 469.2277,
+      "partner_share": 82.1148475
+    },
+    {
+      "period_start": "2025-08-28",
+      "period_end": "2025-09-11",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 393.6186,
+      "partner_share": 68.88325499999999
+    },
+    {
+      "period_start": "2025-08-28",
+      "period_end": "2025-09-11",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 253.077,
+      "partner_share": 44.288475
+    },
+    {
+      "period_start": "2025-09-11",
+      "period_end": "2025-09-25",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 418.9607,
+      "partner_share": 73.31812249999999
+    },
+    {
+      "period_start": "2025-09-11",
+      "period_end": "2025-09-25",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 444.991,
+      "partner_share": 77.873425
+    },
+    {
+      "period_start": "2025-09-11",
+      "period_end": "2025-09-25",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 304.9736,
+      "partner_share": 53.37037999999999
+    },
+    {
+      "period_start": "2025-09-25",
+      "period_end": "2025-10-09",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 251.1014,
+      "partner_share": 43.942745
+    },
+    {
+      "period_start": "2025-09-25",
+      "period_end": "2025-10-09",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 357.5793,
+      "partner_share": 62.57637749999999
+    },
+    {
+      "period_start": "2025-09-25",
+      "period_end": "2025-10-09",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 368.202,
+      "partner_share": 64.43535
+    },
+    {
+      "period_start": "2025-10-09",
+      "period_end": "2025-10-23",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 231.318,
+      "partner_share": 40.48065
+    },
+    {
+      "period_start": "2025-10-09",
+      "period_end": "2025-10-23",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 439.0226,
+      "partner_share": 76.828955
+    },
+    {
+      "period_start": "2025-10-09",
+      "period_end": "2025-10-23",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 180.1746,
+      "partner_share": 31.530554999999996
+    },
+    {
+      "period_start": "2025-10-23",
+      "period_end": "2025-11-06",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 272.8469,
+      "partner_share": 47.7482075
+    },
+    {
+      "period_start": "2025-10-23",
+      "period_end": "2025-11-06",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 332.4686,
+      "partner_share": 58.18200499999999
+    },
+    {
+      "period_start": "2025-10-23",
+      "period_end": "2025-11-06",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 260.9435,
+      "partner_share": 45.66511249999999
+    },
+    {
+      "period_start": "2025-11-06",
+      "period_end": "2025-11-20",
+      "pool_id": "0x870c0af8a1af0b58b4b0bd31ce4fe72864ae45be",
+      "chain": "optimism",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 195.9185,
+      "partner_share": 34.285737499999996
+    },
+    {
+      "period_start": "2025-11-06",
+      "period_end": "2025-11-20",
+      "pool_id": "0xb7b8b3afc010169779c5c2385ec0eb0477fe3347",
+      "chain": "base",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 705.7178,
+      "partner_share": 123.500615
+    },
+    {
+      "period_start": "2025-11-06",
+      "period_end": "2025-11-20",
+      "pool_id": "0x5418a64e0cdb20548acb394f5d00a089baf02161",
+      "chain": "arbitrum",
+      "symbol": "Balancer rETH-Aave wETH",
+      "earned_fees": 450.1949,
+      "partner_share": 78.7841075
+    }
+  ]
+}

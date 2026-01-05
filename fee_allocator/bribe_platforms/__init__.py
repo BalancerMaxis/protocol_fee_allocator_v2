@@ -1,12 +1,12 @@
 from .base import BribePlatform
-from .factory import BribePlatformFactory
+from .factory import get_platform
 from .hiddenhand import HiddenHandPlatform
 from .paladin import PaladinPlatform
 from .stakedao import StakeDAOPlatform
 
 __all__ = [
     "BribePlatform",
-    "BribePlatformFactory",
+    "get_platform",
     "HiddenHandPlatform",
     "PaladinPlatform",
     "StakeDAOPlatform",
