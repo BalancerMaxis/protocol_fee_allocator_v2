@@ -4,5 +4,4 @@ PARTNER_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-o
 EZKL_POOLS_URL = "https://raw.githubusercontent.com/BalancerMaxis/bal_addresses/main/outputs/ezkl_pools.json"
 POOL_OVERRIDES_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/pool_incentives_overrides.json"
 SNAPSHOT_URL = "https://hub.snapshot.org/graphql?"
-HH_API_URL = "https://api.hiddenhand.finance/proposal"
-GAUGE_MAPPING_URL = "https://raw.githubusercontent.com/aurafinance/aura-contracts/main/tasks/snapshot/gauge_choices.json"
+STAKEDAO_ANALYTICS_BASE_URL = "https://raw.githubusercontent.com/stake-dao/votemarket-analytics/refs/heads/main/analytics/votemarket-analytics/balancer"

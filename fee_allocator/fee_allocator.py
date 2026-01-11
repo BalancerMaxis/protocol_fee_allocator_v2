@@ -70,23 +70,21 @@ class FeeAllocator:
         Non-core pools: 82.5% veBAL, 17.5% DAO
         """
         self.run_config.set_core_pool_chains_data()
-        self.run_config.set_aura_vebal_share()
         self.run_config.set_initial_pool_allocation()
         if redistribute:
             self.redistribute_fees()
 
     def redistribute_fees(self):
         """
-        Redistributes fees among pools based on minimum incentive amounts and chain-specific rules.
+        Redistributes fees among pools based on minimum incentive amounts.
 
-        This method performs the following steps:
-        1. Identifies pools with total incentives below the minimum threshold ($500)
-        2. Redistributes fees from these pools to eligible pools above the threshold
-        3. Recalculates incentive amounts for Aura and Balancer based on veBAL share
-        4. Calls _handle_aura_min twice (with and without buffer) to enforce AURA minimums
-        5. Calls _filter_dusty_bal_incentives to handle dust amounts and final redistribution
+        Pools with total incentives below the minimum threshold get their incentives
+        redistributed to eligible pools above the threshold.
+
         """
-        min_amount = self.run_config.fee_config.min_vote_incentive_amount
+        min_amount = self.run_config.fee_config.min_aura_incentive
+        logger.info(f"Redistribution threshold: ${min_amount}")
+
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
             pools_to_receive = [p for p in chain.core_pools if p.total_to_incentives_usd >= min_amount]
@@ -97,8 +95,6 @@ class FeeAllocator:
                     pool.to_dao_usd += amount * self.run_config.fee_config.noncore_dao_share_pct
                     pool.to_vebal_usd += amount * self.run_config.fee_config.noncore_vebal_share_pct
                     pool.redirected_incentives_usd -= amount
-                    pool.to_aura_incentives_usd = Decimal(0)
-                    pool.to_bal_incentives_usd = Decimal(0)
                     pool.total_to_incentives_usd = Decimal(0)
                 continue
 
@@ -107,8 +103,6 @@ class FeeAllocator:
 
             for pool in pools_to_redistribute:
                 pool.redirected_incentives_usd -= pool.total_to_incentives_usd
-                pool.to_aura_incentives_usd = Decimal(0)
-                pool.to_bal_incentives_usd = Decimal(0)
                 pool.total_to_incentives_usd = Decimal(0)
 
             for pool in pools_to_receive:
@@ -117,13 +111,6 @@ class FeeAllocator:
                 pool.total_to_incentives_usd += total
                 pool.redirected_incentives_usd += total
 
-                pool.to_aura_incentives_usd += total if pool.is_alliance_core_pool else total * self.run_config.aura_vebal_share
-                pool.to_bal_incentives_usd += Decimal(0) if pool.is_alliance_core_pool else total * (1 - self.run_config.aura_vebal_share)
-
-        self._handle_aura_min(buffer=0.25)
-        self._handle_aura_min()
-        self._filter_dusty_bal_incentives()
-    
     def generate_artifacts(self, include_bal_transfer: bool = True) -> Dict[str, Path]:
         """
         Generates all fee allocation artifacts (CSVs and payload).
@@ -135,14 +122,14 @@ class FeeAllocator:
         alliance_path = self.generate_alliance_csv()
         partner_path = self.generate_partner_csv()
         noncore_path = self.generate_noncore_csv()
-        
+
         payload_path = self.generate_bribe_payload(
-            bribe_path, 
+            bribe_path,
             partner_csv=partner_path,
             alliance_csv=alliance_path,
             include_bal_transfer=include_bal_transfer
         )
-        
+
         return {
             "incentives_csv": incentives_path,
             "bribe_csv": bribe_path,
@@ -151,143 +138,6 @@ class FeeAllocator:
             "noncore_csv": noncore_path,
             "payload": payload_path
         }
-
-    def _handle_aura_min(self, buffer=0):
-        """
-        Ensures all pools meet the minimum AURA incentive threshold.
-
-        1. Consolidate under-min pools by moving their AURA to BAL
-        2. Redistribute that debt to pools above min by moving their BAL to AURA
-        3. Rebalance to maintain target Aura/Balancer ratio
-        """
-        min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive * (1 - buffer))
-        for chain in self.run_config.all_chains:
-            while True:
-                debt_to_aura = Decimal(0)
-                pools_below_min: List[PoolFee] = []
-
-                for pool in chain.core_pools:
-                    if pool.to_aura_incentives_usd < min_aura_incentive or pool.voting_pool_override == "bal":
-                        debt_to_aura += pool.to_aura_incentives_usd
-                        pools_below_min.append(pool)
-
-                if not debt_to_aura:
-                    break
-
-                for pool in pools_below_min:
-                    pool.to_bal_incentives_usd += pool.to_aura_incentives_usd
-                    pool.to_aura_incentives_usd = Decimal(0)
-
-                pools_over_min = [
-                    p for p in chain.core_pools
-                    if p.to_aura_incentives_usd >= min_aura_incentive and p.to_bal_incentives_usd > 0
-                ]
-
-                if not pools_over_min:
-                    break
-
-                pools_over_min.sort(key=lambda p: p.to_bal_incentives_usd, reverse=True)
-                debt_remaining = debt_to_aura
-                total_available_bal = sum(p.to_bal_incentives_usd for p in pools_over_min)
-
-                if total_available_bal == 0:
-                    break
-
-                transfers_made = False
-                for pool in pools_over_min:
-                    if debt_remaining <= 0:
-                        break
-
-                    pool_share = pool.to_bal_incentives_usd / total_available_bal
-                    amount_to_transfer = min(
-                        debt_remaining * pool_share,
-                        pool.to_bal_incentives_usd,
-                        max(Decimal(0), pool.to_aura_incentives_usd + pool.to_bal_incentives_usd - min_aura_incentive)
-                    )
-
-                    if amount_to_transfer > 0:
-                        pool.to_aura_incentives_usd += amount_to_transfer
-                        pool.to_bal_incentives_usd -= amount_to_transfer
-                        debt_remaining -= amount_to_transfer
-                        transfers_made = True
-
-                if not transfers_made:
-                    break
-
-            self._rebalance_aura_bal_split(chain, min_aura_incentive)
-
-    def _rebalance_aura_bal_split(self, chain, min_aura: Decimal):
-        pools = [p for p in chain.core_pools if not p.is_alliance_core_pool and not p.partner and p.total_to_incentives_usd > 0]
-        total = sum(p.to_aura_incentives_usd + p.to_bal_incentives_usd for p in pools)
-        if not total:
-            return
-
-        to_move = total * self.run_config.aura_vebal_share - sum(p.to_aura_incentives_usd for p in pools)
-
-        for pool in sorted(pools, key=lambda p: p.to_bal_incentives_usd if to_move > 0 else p.to_aura_incentives_usd, reverse=True):
-            if to_move > 0 and pool.to_bal_incentives_usd > 0 and pool.to_aura_incentives_usd >= min_aura:
-                move = min(pool.to_bal_incentives_usd, to_move)
-                pool.to_aura_incentives_usd += move
-                pool.to_bal_incentives_usd -= move
-                to_move -= move
-            elif to_move < 0:
-                available = pool.to_aura_incentives_usd - min_aura
-                if available > 0:
-                    move = min(available, abs(to_move))
-                    pool.to_bal_incentives_usd += move
-                    pool.to_aura_incentives_usd -= move
-                    to_move += move
-
-    def _filter_dusty_bal_incentives(self):
-        """
-        Handles dust BAL amounts (<$75). Only moves to AURA if it results in meaningful AURA.
-        If a pool ends up with no meaningful incentives after dust handling, redistribute.
-        """
-        min_aura_incentive = Decimal(self.run_config.fee_config.min_aura_incentive)
-        dust_threshold = Decimal(75)
-        
-        for chain in self.run_config.all_chains:
-            pools_to_zero = []
-            
-            for pool in chain.core_pools:
-                if pool.total_to_incentives_usd == 0:
-                    continue
-                    
-                # If pool has dust BAL, try to move to AURA
-                if 0 < pool.to_bal_incentives_usd < dust_threshold:
-                    potential_aura = pool.to_aura_incentives_usd + pool.to_bal_incentives_usd
-                    if potential_aura >= min_aura_incentive:
-                        pool.to_aura_incentives_usd = potential_aura
-                        pool.to_bal_incentives_usd = Decimal(0)
-                
-                # After dust handling, if pool has no AURA and only dust BAL, it can't provide meaningful incentives
-                if pool.to_aura_incentives_usd < min_aura_incentive and pool.to_bal_incentives_usd < dust_threshold:
-                    pools_to_zero.append(pool)
-            
-            # Redistribute from pools that can't provide meaningful incentives
-            if pools_to_zero:
-                pools_to_receive = [p for p in chain.core_pools if p not in pools_to_zero and p.total_to_incentives_usd > 0]
-                
-                if pools_to_receive:
-                    total_to_redistribute = sum(p.total_to_incentives_usd for p in pools_to_zero)
-                    total_weight = sum(p.total_earned_fees_usd_twap for p in pools_to_receive)
-                    
-                    # Zero out pools that can't provide meaningful incentives
-                    for pool in pools_to_zero:
-                        pool.redirected_incentives_usd -= pool.total_to_incentives_usd
-                        pool.to_aura_incentives_usd = Decimal(0)
-                        pool.to_bal_incentives_usd = Decimal(0)
-                        pool.total_to_incentives_usd = Decimal(0)
-                    
-                    for pool in pools_to_receive:
-                        weight = pool.total_earned_fees_usd_twap / total_weight
-                        amount = total_to_redistribute * weight
-                        pool.total_to_incentives_usd += amount
-                        pool.redirected_incentives_usd += amount
-                        if pool.to_aura_incentives_usd >= pool.to_bal_incentives_usd:
-                            pool.to_aura_incentives_usd += amount
-                        else:
-                            pool.to_bal_incentives_usd += amount
 
     def generate_bribe_csv(
         self, output_path: Path = Path("fee_allocator/allocations/output_for_msig")
@@ -302,23 +152,12 @@ class FeeAllocator:
                 if not core_pool.gauge_address:
                     logger.warning(f"Pool {core_pool.pool_id} has no gauge address")
 
-                bal_platform = core_pool.market_override or self.run_config.fee_config.bal_bribe_platform
-                aura_platform = core_pool.market_override or self.run_config.fee_config.aura_bribe_platform
-
                 output.append(
                     {
                         "target": core_pool.gauge_address,
-                        "platform": "balancer",
-                        "amount": round(core_pool.to_bal_incentives_usd, 4),
-                        "bribe_platform": bal_platform,
-                    },
-                )
-                output.append(
-                    {
-                        "target": core_pool.gauge_address,
-                        "platform": "aura",
-                        "amount": round(core_pool.to_aura_incentives_usd, 4),
-                        "bribe_platform": aura_platform,
+                        "amount": round(core_pool.total_to_incentives_usd, 4),
+                        "is_alliance": core_pool.is_alliance_core_pool,
+                        "voting_pool_override": core_pool.voting_pool_override,
                     },
                 )
 
@@ -370,13 +209,11 @@ class FeeAllocator:
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "fees_to_beets": round(core_pool.to_beets_usd, 4),
                         "total_incentives": round(core_pool.total_to_incentives_usd, 4),
-                        "aura_incentives": round(core_pool.to_aura_incentives_usd, 4),
-                        "bal_incentives": round(core_pool.to_bal_incentives_usd, 4),
                         "redirected_incentives": round(
                             core_pool.redirected_incentives_usd, 4
                         ),
-                        "reroute_incentives": 0,
                         "last_join_exit": core_pool.last_join_exit_ts,
+                        "is_alliance": core_pool.is_alliance_core_pool,
                         "is_partner": any(pool.pool_id == core_pool.pool_id for pool in chain.alliance_pools) or core_pool.pool_id in chain.partner_pools_map,
                     },
                 )
@@ -519,7 +356,7 @@ class FeeAllocator:
         include_bal_transfer: bool = True
     ) -> Path:
         """builds a safe payload from the bribe csv
-        
+
         Args:
             input_csv: Path to the bribe CSV file
             output_path: Directory to save the payload JSON
@@ -534,24 +371,18 @@ class FeeAllocator:
         bal = SafeContract(self.book["tokens/BAL"], abi_file_path=f"{base_dir}/abi/ERC20.json")
 
         df = pd.read_csv(input_csv)
-        
-        bribe_df = df[df["platform"].isin(["balancer", "aura"])]
+
+        bribe_df = df[~df["platform"].isin(["payment", "beets"]) if "platform" in df.columns else df["amount"] > 0]
+        bribe_df = bribe_df[bribe_df["amount"] > 0]
         payment_df = df[df["platform"] == "payment"].iloc[0]
         beets_df = df[df["platform"] == "beets"].iloc[0]
-
-        platform_groups = {}
-        if not bribe_df.empty:
-            for platform_name in bribe_df["bribe_platform"].unique():
-                platform_bribes = bribe_df[bribe_df["bribe_platform"] == platform_name]
-                if not platform_bribes.empty and platform_bribes["amount"].sum() > 0:
-                    platform_groups[platform_name] = platform_bribes
 
         dao_fee_usdc = round(payment_df["amount"] * 1e6) - 1000  # round down 0.1 cent
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
-        for platform_name, platform_bribes in platform_groups.items():
-            platform = get_platform(platform_name, self.book, self.run_config)
-            platform.process_bribes(platform_bribes, builder, usdc)
+        if not bribe_df.empty:
+            platform = get_platform(self.book, self.run_config)
+            platform.process_bribes(bribe_df, builder, usdc)
 
         usdc.transfer(payment_df["target"], dao_fee_usdc)
         usdc.transfer(beets_df["target"], beets_fee_usdc)
@@ -612,12 +443,10 @@ class FeeAllocator:
         Checks:
         1. No negative incentive amounts
         2. Sum of percentage allocations equals 1
-        3. Aura veBAL share within target range
-        4. Small delta between collected and distributed fees
+        3. Small delta between collected and distributed fees
         """
         total_fees = self.run_config.total_fees_collected_usd
-        total_aura = Decimal(0)
-        total_bal = Decimal(0)
+        total_incentives = Decimal(0)
         total_dao = Decimal(0)
         total_vebal = Decimal(0)
         total_partner = Decimal(0)
@@ -626,15 +455,13 @@ class FeeAllocator:
 
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
-                assert pool.to_aura_incentives_usd >= 0, f"Negative aura incentives: {pool.to_aura_incentives_usd}"
-                assert pool.to_bal_incentives_usd >= 0, f"Negative bal incentives: {pool.to_bal_incentives_usd}"
+                assert pool.total_to_incentives_usd >= 0, f"Negative incentives: {pool.total_to_incentives_usd}"
                 assert pool.to_dao_usd >= 0, f"Negative dao share: {pool.to_dao_usd}"
                 assert pool.to_vebal_usd >= 0, f"Negative vebal share: {pool.to_vebal_usd}"
                 assert pool.to_partner_usd >= 0, f"Negative partner share: {pool.to_partner_usd}"
                 assert pool.to_beets_usd >= 0, f"Negative beets share: {pool.to_beets_usd}"
 
-                total_aura += pool.to_aura_incentives_usd
-                total_bal += pool.to_bal_incentives_usd
+                total_incentives += pool.total_to_incentives_usd
                 total_dao += pool.to_dao_usd
                 total_vebal += pool.to_vebal_usd
                 total_partner += pool.to_partner_usd
@@ -646,58 +473,48 @@ class FeeAllocator:
 
             for noncore_pool in chain.alliance_noncore_fee_data:
                 total_partner += chain.get_alliance_noncore_member_fee(noncore_pool.pool_id)
-            
+
             for noncore_pool in chain.partner_noncore_fee_data:
                 total_partner += chain.get_partner_noncore_fee(noncore_pool.pool_id)
 
-        # Total distributed includes all allocations including partner fees
-        total_distributed = total_aura + total_bal + total_dao + total_vebal + total_partner + total_beets
+        total_distributed = total_incentives + total_dao + total_vebal + total_partner + total_beets
 
-        # For percentage calculations, we need to check that everything sums to 100%
         if total_distributed > 0:
-            total_pct = total_distributed / total_distributed  # This should always be 1
+            total_pct = total_distributed / total_distributed
             assert abs(1 - total_pct) < Decimal('0.0001'), f"Percentages don't sum to 1: {total_pct}"
-
-        # Only check Aura share against BAL for core pool incentives
-        core_pool_incentives = total_aura + total_bal
-        aura_share = total_aura / core_pool_incentives if core_pool_incentives > 0 else Decimal(0)
 
         total_core_fees_collected = Decimal(0)
         for chain in self.run_config.all_chains:
-            # Core pools get their share of collected fees based on earned/total_earned ratio
             if chain.total_fees_earned > 0:
                 core_share = chain.total_earned_fees_usd_twap / chain.total_fees_earned
                 total_core_fees_collected += chain.fees_collected * core_share
-        
+
         total_noncore_fees_collected = Decimal(0)
         for chain in self.run_config.all_chains:
-            # Non-core fees are what's left after core pools
             if chain.total_fees_earned > 0:
                 noncore_share = (chain.noncore_fees_collected + chain.alliance_noncore_fees_earned + chain.partner_noncore_fees_earned) / chain.total_fees_earned
                 total_noncore_fees_collected += chain.fees_collected * noncore_share
-        
+
         summary = {
             "feesCollected": float(round(total_fees, 2)),
             "totalDistributed": float(round(total_distributed, 2)),
             "feesNotDistributed": float(round(total_fees - total_distributed, 2)),
             "coreFees": float(round(total_core_fees_collected, 2)),
             "noncoreFees": float(round(total_noncore_fees_collected, 2)),
-            "auraIncentives": float(round(total_aura, 2)),
-            "balIncentives": float(round(total_bal, 2)),
+            "totalIncentives": float(round(total_incentives, 2)),
             "feesToDao": float(round(total_dao, 2)),
             "feesToVebal": float(round(total_vebal, 2)),
             "feesToPartners": float(round(total_partner, 2)),
             "feesToBeets": float(round(total_beets, 2)),
-            "auravebalShare": float(round(aura_share, 2)),
-            "auraIncentivesPct": float(round(total_aura / total_distributed, 4)) if total_distributed > 0 else 0,
-            "balIncentivesPct": float(round(total_bal / total_distributed, 4)) if total_distributed > 0 else 0,
+            "incentivesPct": float(round(total_incentives / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToDaoPct": float(round(total_dao / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToBeetsPct": float(round(total_beets / total_distributed, 4)) if total_distributed > 0 else 0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
-            "periodEnd": self.date_range[1]
+            "periodEnd": self.date_range[1],
+            "bribeThreshold": self.run_config.fee_config.min_aura_incentive
         }
 
         recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries" / f"{self.run_config.protocol_version}_recon.json"
@@ -722,17 +539,13 @@ class FeeAllocator:
             date_str = payload_name[3:]
         else:
             date_str = payload_name
-            
+
         if self.run_config.protocol_version:
             report_name = f"{self.run_config.protocol_version}_{date_str}.md"
         else:
             report_name = f"{date_str}.md"
-            
+
         reports_dir = Path(PROJECT_ROOT) / "fee_allocator" / "reports"
         report_path = reports_dir / report_name
-        
-        gauge_issues_path = Path(PROJECT_ROOT) / f"fee_allocator/allocations/{self.run_config.protocol_version}_paladin_gauge_status_{self.start_date}_{self.end_date}.json"
-        if not gauge_issues_path.exists():
-            gauge_issues_path = None
-        
-        return save_markdown_report(payload_path, fee_files, output_path=report_path, gauge_issues_path=gauge_issues_path)
+
+        return save_markdown_report(payload_path, fee_files, output_path=report_path)

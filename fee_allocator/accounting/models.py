@@ -2,7 +2,7 @@ from pydantic import BaseModel, model_validator, validator
 from decimal import Decimal
 from typing import Dict, NewType, Optional
 
-from bal_tools.ecosystem import HiddenHand
+from fee_allocator.utils import calculate_dynamic_min_incentive
 
 
 Pools = Dict[NewType("PoolId", str), NewType("Symbol", str)]
@@ -10,42 +10,25 @@ InputFees = Dict[NewType("CorePoolChainName", str), NewType("FeesCollected", int
 
 
 class PoolOverride(BaseModel):
-    """
-    Represents pool-specific overrides for voting pool allocation and bribe platform.
-    """
-    voting_pool_override: Optional[str] = None  # "bal", "aura", or "split"
-    market_override: Optional[str] = None  # "stakedao" or "paladin" to override default routing
+    voting_pool_override: Optional[str] = None
+    market_override: Optional[str] = None
 
 
 class GlobalFeeConfig(BaseModel):
-    """
-    Represents the global fee configuration for the fee allocation process.
-    Models the data sourced from the FEE_CONSTANTS_URL endpoint.
-    """
+    min_aura_incentive: int = 0
 
-    min_aura_incentive: int
-    min_existing_aura_incentive: int
-    min_vote_incentive_amount: int
-
-    # Core pool fee splits
     vebal_share_pct: Decimal
     dao_share_pct: Decimal
     vote_incentive_pct: Decimal
 
-    # Non-core pool fee splits
     noncore_vebal_share_pct: Decimal
     noncore_dao_share_pct: Decimal
 
-    # Beets fee split (https://forum.balancer.fi/t/bip-800-deploy-balancer-v3-on-op-mainnet)
     beets_share_pct: Decimal
-
-    # Default bribe platforms (can be overridden per-pool via market_override)
-    bal_bribe_platform: str = "hh"
-    aura_bribe_platform: str = "hh"
 
     @model_validator(mode="after")
     def set_dynamic_min_aura_incentive(self):
-        self.min_aura_incentive = int(HiddenHand().get_min_aura_incentive())
+        self.min_aura_incentive = calculate_dynamic_min_incentive()
         return self
 
 
