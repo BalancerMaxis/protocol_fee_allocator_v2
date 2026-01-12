@@ -2,7 +2,7 @@ from pydantic import BaseModel, model_validator, validator
 from decimal import Decimal
 from typing import Dict, NewType, Optional
 
-from fee_allocator.utils import calculate_dynamic_min_incentive
+from bal_tools import StakeDAO
 
 
 Pools = Dict[NewType("PoolId", str), NewType("Symbol", str)]
@@ -28,7 +28,7 @@ class GlobalFeeConfig(BaseModel):
 
     @model_validator(mode="after")
     def set_dynamic_min_aura_incentive(self):
-        self.min_aura_incentive = calculate_dynamic_min_incentive()
+        self.min_aura_incentive = StakeDAO().calculate_dynamic_min_incentive()
         return self
 
 

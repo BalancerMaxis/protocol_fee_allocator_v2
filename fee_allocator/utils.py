@@ -4,79 +4,9 @@ import pytz
 import os
 from dotenv import load_dotenv
 import json
-import requests
-import statistics
-import math
-
-from fee_allocator.constants import SNAPSHOT_URL, STAKEDAO_ANALYTICS_BASE_URL
 
 
 load_dotenv()
-
-
-def get_aura_max_votes_from_snapshot(n_rounds: int = 2) -> int:
-    query = """
-    query Proposals($space: String!, $first: Int!) {
-        proposals(
-            first: $first,
-            skip: 0,
-            where: { space: $space, title_contains: "Gauge Weight" },
-            orderBy: "created",
-            orderDirection: desc
-        ) {
-            id
-            title
-            scores_total
-            created
-        }
-    }
-    """
-    response = requests.post(
-        SNAPSHOT_URL,
-        json={"query": query, "variables": {"space": "gauges.aurafinance.eth", "first": n_rounds}},
-        timeout=30
-    )
-    response.raise_for_status()
-    data = response.json()
-
-    proposals = data.get("data", {}).get("proposals", [])
-    if not proposals:
-        raise ValueError("No Aura gauge weight proposals found on Snapshot")
-
-    return int(max(p["scores_total"] for p in proposals if p.get("scores_total")))
-
-
-def get_stakedao_cpv_from_analytics(n_rounds: int = 2) -> float:
-    metadata_url = f"{STAKEDAO_ANALYTICS_BASE_URL}/rounds-metadata.json"
-    response = requests.get(metadata_url, timeout=30)
-    response.raise_for_status()
-    rounds = response.json()
-
-    latest_rounds = sorted(rounds, key=lambda x: x["id"], reverse=True)[:n_rounds]
-
-    cpv_values = []
-    for round_info in latest_rounds:
-        round_url = f"{STAKEDAO_ANALYTICS_BASE_URL}/{round_info['id']}.json"
-        response = requests.get(round_url, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        cpv = data.get("globalAverageDollarPerVote")
-        if cpv and cpv > 0:
-            cpv_values.append(float(cpv))
-
-    if not cpv_values:
-        raise ValueError("No valid CPV data found in StakeDAO analytics")
-
-    return statistics.mean(cpv_values)
-
-
-def calculate_dynamic_min_incentive(n_rounds: int = 2, buffer_pct: float = 0.5) -> int:
-    max_votes = get_aura_max_votes_from_snapshot(n_rounds)
-    avg_cpv = get_stakedao_cpv_from_analytics(n_rounds)
-
-    min_incentive = math.ceil(max_votes * 0.001 * (1 + buffer_pct) * avg_cpv / 10) * 10
-    return int(min_incentive)
 
 
 def get_last_thursday_odd_week():

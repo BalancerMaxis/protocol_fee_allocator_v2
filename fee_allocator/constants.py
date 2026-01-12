@@ -3,5 +3,3 @@ ALLIANCE_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-
 PARTNER_CONFIG_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/partner_fee_share.json"
 EZKL_POOLS_URL = "https://raw.githubusercontent.com/BalancerMaxis/bal_addresses/main/outputs/ezkl_pools.json"
 POOL_OVERRIDES_URL = "https://raw.githubusercontent.com/BalancerMaxis/multisig-ops/main/config/pool_incentives_overrides.json"
-SNAPSHOT_URL = "https://hub.snapshot.org/graphql?"
-STAKEDAO_ANALYTICS_BASE_URL = "https://raw.githubusercontent.com/stake-dao/votemarket-analytics/refs/heads/main/analytics/votemarket-analytics/balancer"
