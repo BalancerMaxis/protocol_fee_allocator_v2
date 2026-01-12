@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1767304317,
+  "createdAt": 1768238676,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -11,6 +11,118 @@
     "checksum": "0x0000000000000000000000000000000000000000000000000000000000000000"
   },
   "transactions": [
+    {
+      "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "value": "0",
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "_spender",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "_value",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "name": "approve",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "_spender": "0x53aD4Cd1F1e52DD02aa9FC4A8250A1b74F351CA2",
+        "_value": "473188000"
+      }
+    },
+    {
+      "to": "0x53aD4Cd1F1e52DD02aa9FC4A8250A1b74F351CA2",
+      "value": "265234271841102",
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "params",
+            "type": "tuple",
+            "internalType": "struct CampaignRemoteManager.CampaignCreationParams",
+            "components": [
+              {
+                "name": "chainId",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "gauge",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "manager",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "rewardToken",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "numberOfPeriods",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "maxRewardPerVote",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "totalRewardAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "addresses",
+                "type": "address[]",
+                "internalType": "address[]"
+              },
+              {
+                "name": "hook",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "isWhitelist",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          },
+          {
+            "name": "destinationChainId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "additionalGasLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "votemarket",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "name": "createCampaign",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "params": "[\"42161\",\"0x8135d6AbFd42707A87A7b94c5CFA3529f9b432AD\",\"0x7c68c42De679ffB0f16216154C996C354cF1161B\",\"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\"2\",\"473188000\",\"473188000\",[],\"0x0000000000000000000000000000000000000000\",false]",
+        "destinationChainId": "42161",
+        "additionalGasLimit": "0",
+        "votemarket": "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7"
+      }
+    },
     {
       "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "value": "0",
@@ -32,7 +144,7 @@
       },
       "contractInputsValues": {
         "_to": "0x16b0056636Fcc85f92C49cD49a24bc519d4A1941",
-        "_value": "7466929350"
+        "_value": "7384121450"
       }
     },
     {
@@ -104,7 +216,7 @@
       },
       "contractInputsValues": {
         "_to": "0x8AD2512819A7eae1dd398973EFfaE48dafBe8255",
-        "_value": "34236545500"
+        "_value": "33846165400"
       }
     }
   ]
