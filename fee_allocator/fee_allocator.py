@@ -372,7 +372,7 @@ class FeeAllocator:
 
         df = pd.read_csv(input_csv)
 
-        bribe_df = df[~df["platform"].isin(["payment", "beets"]) if "platform" in df.columns else df["amount"] > 0]
+        bribe_df = df[df["platform"].isna()] if "platform" in df.columns else df[df["amount"] > 0]
         bribe_df = bribe_df[bribe_df["amount"] > 0]
         payment_df = df[df["platform"] == "payment"].iloc[0]
         beets_df = df[df["platform"] == "beets"].iloc[0]
