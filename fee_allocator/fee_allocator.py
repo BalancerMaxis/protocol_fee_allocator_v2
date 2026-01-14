@@ -15,7 +15,7 @@ from fee_allocator.accounting.core_pools import PoolFee
 from fee_allocator.accounting import PROJECT_ROOT
 from fee_allocator.logger import logger
 from fee_allocator.payload_visualizer import save_markdown_report
-from fee_allocator.bribe_platforms import get_platform
+from fee_allocator.bribe_platforms import StakeDAOPlatform
 
 load_dotenv()
 
@@ -381,7 +381,7 @@ class FeeAllocator:
         beets_fee_usdc = round(beets_df["amount"] * 1e6) - 1000  # round down 0.1 cent
 
         if not bribe_df.empty:
-            platform = get_platform(self.book, self.run_config)
+            platform = StakeDAOPlatform(self.book, self.run_config)
             platform.process_bribes(bribe_df, builder, usdc)
 
         usdc.transfer(payment_df["target"], dao_fee_usdc)
