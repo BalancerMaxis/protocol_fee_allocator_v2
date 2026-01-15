@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Any, List
+from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 from web3 import Web3
 from .base import BribePlatform
@@ -12,9 +12,10 @@ import json
 import os
 
 
-class StakeDAOPlatform(BribePlatform):
-    """StakeDAO VoteMarket v2 platform implementation for Balancer bribes"""
+AURA_VEBAL_LOCKER = Web3.to_checksum_address("0xaF52695E1bB01A16D33D7194C28C42b10e0Dbec2")
 
+
+class StakeDAOPlatform(BribePlatform):
     SUPPORTED_L2_CHAINS = ["arbitrum", "optimism", "base", "polygon"]
 
     def __init__(self, book: Dict[str, str], run_config: Any):
@@ -32,17 +33,12 @@ class StakeDAOPlatform(BribePlatform):
         self.w3 = Web3Rpc("mainnet", os.environ.get("DRPC_KEY"))
 
     def _build_gauge_to_chain_map(self):
-        """Build a mapping of gauge addresses to their chains from the run config."""
-        if not self.run_config or not hasattr(self.run_config, 'all_chains'):
-            return
-
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
                 if pool.gauge_address:
                     self._gauge_to_chain_cache[pool.gauge_address.lower()] = chain.name
 
     def _get_chain_selector(self, chain_id: int) -> int:
-        """Get CCIP chain selector for a given chain ID."""
         base_dir = Path(__file__).parent.parent
         with open(f"{base_dir}/abi/laposte_adapter.json", 'r') as f:
             adapter_abi = json.load(f)
@@ -60,7 +56,6 @@ class StakeDAOPlatform(BribePlatform):
             raise
 
     def _calculate_ccip_fee(self, destination_chain_id: int, campaign_params: tuple) -> int:
-        """Calculate CCIP fee for cross-chain message."""
         destination_selector = self._get_chain_selector(destination_chain_id)
 
         base_dir = Path(__file__).parent.parent
@@ -81,23 +76,23 @@ class StakeDAOPlatform(BribePlatform):
             ['(uint256,address,address,(address,uint256)[],bytes)'],
             [(
                 destination_chain_id,
-                self.campaign_remote_manager_address,  # to
-                self.campaign_remote_manager_address,  # sender
-                [(self.usdc_address, campaign_params[6])],  # token transfer
+                self.campaign_remote_manager_address,
+                self.campaign_remote_manager_address,
+                [(self.usdc_address, campaign_params[6])],
                 payload_data
             )]
         )
 
         gas_limit = 200000
-        evm_extra_args_tag = bytes.fromhex('97a657c9')  # EVMExtraArgsV1 tag
+        evm_extra_args_tag = bytes.fromhex('97a657c9')
         extra_args_data = encode(['uint256'], [gas_limit])
         evm_extra_args = evm_extra_args_tag + extra_args_data
 
         ccip_message = {
             'receiver': encode(['address'], [self.laposte_adapter_address]),
             'data': laposte_message,
-            'tokenAmounts': [],  # No tokens via CCIP (handled by LaPoste)
-            'feeToken': '0x0000000000000000000000000000000000000000',  # Native ETH
+            'tokenAmounts': [],
+            'feeToken': '0x0000000000000000000000000000000000000000',
             'extraArgs': evm_extra_args
         }
 
@@ -106,17 +101,14 @@ class StakeDAOPlatform(BribePlatform):
             ccip_message
         ).call()
 
-        # 50% buffer for safety
         fee_with_buffer = int(fee * 1.50)
 
         logger.info(f"CCIP fee for chain {destination_chain_id}: {Web3.from_wei(fee_with_buffer, 'ether')} ETH (with 50% buffer)")
         return fee_with_buffer
 
     def process_bribes(self, bribes_df: pd.DataFrame, builder: Any, usdc: Any) -> None:
-        balancer_bribes = bribes_df[bribes_df["platform"] == "balancer"]
-
-        if balancer_bribes.empty or balancer_bribes["amount"].sum() == 0:
-            logger.info("No Balancer bribes to process for StakeDAO")
+        if bribes_df.empty or bribes_df["amount"].sum() == 0:
+            logger.info("No bribes to process for StakeDAO")
             return
 
         base_dir = Path(__file__).parent.parent
@@ -125,12 +117,12 @@ class StakeDAOPlatform(BribePlatform):
             abi_file_path=f"{base_dir}/abi/stakedao_marketv2.json"
         )
 
-        total_usdc = sum(int(row["amount"] * 1e6) for _, row in balancer_bribes.iterrows() if row["amount"] > 0)
+        total_usdc = sum(int(row["amount"] * 1e6) for _, row in bribes_df.iterrows() if row["amount"] > 0)
         if total_usdc > 0:
             usdc.approve(self.campaign_remote_manager_address, total_usdc)
             logger.info(f"Approved {total_usdc / 1e6} USDC for StakeDAO CampaignRemoteManager")
 
-        for _, row in balancer_bribes.iterrows():
+        for _, row in bribes_df.iterrows():
             if int(row["amount"]) == 0:
                 continue
 
@@ -143,7 +135,6 @@ class StakeDAOPlatform(BribePlatform):
 
             mantissa = round(row["amount"] * 1e6)
 
-            # Mainnet gauges route to Arbitrum, L2 gauges stay on same chain
             if chain_name == "mainnet":
                 destination_chain_name = "arbitrum"
                 destination_chain_id = AddrBook.chain_ids_by_name["arbitrum"]
@@ -156,17 +147,25 @@ class StakeDAOPlatform(BribePlatform):
             destination_book = AddrBook(destination_chain_name)
             vote_market_v2_address = destination_book.flatbook["stake_dao/votemarket_v2"]
 
+            is_alliance = row["is_alliance"]
+            voting_override = row.get("voting_pool_override")
+
+            aura_only = is_alliance or voting_override == "aura"
+            bal_only = voting_override == "bal"
+            addresses = [AURA_VEBAL_LOCKER] if aura_only or bal_only else []
+            is_whitelist = aura_only
+
             campaign_params = (
-                chain_id,  # chainId (of the gauge)
-                gauge_address,  # gauge
-                builder.safe_address,  # manager
-                self.usdc_address,  # rewardToken
-                2,  # numberOfPeriods
-                mantissa,  # maxRewardPerVote
-                mantissa,  # totalRewardAmount
-                [],  # whitelist
-                "0x0000000000000000000000000000000000000000",  # hook
-                False  # isWhitelist
+                chain_id,
+                gauge_address,
+                builder.safe_address,
+                self.usdc_address,
+                2,
+                mantissa,
+                mantissa,
+                addresses,
+                "0x0000000000000000000000000000000000000000",
+                is_whitelist,
             )
 
             ccip_fee = self._calculate_ccip_fee(destination_chain_id, campaign_params)
@@ -174,14 +173,14 @@ class StakeDAOPlatform(BribePlatform):
             campaign_manager.createCampaign(
                 campaign_params,
                 destination_chain_id,
-                0,  # additionalGasLimit (using default)
+                0,
                 vote_market_v2_address,
                 value=ccip_fee
             )
             eth_amount = Web3.from_wei(ccip_fee, 'ether')
 
-            logger.info(f"Created StakeDAO v2 bribe for {chain_name} gauge {gauge_address} (campaign on {destination_chain_name}): ${row['amount']:.2f} USDC (includes {eth_amount:.6f} ETH for CCIP)")
-
+            mode_tag = " [AURA only]" if aura_only else " [BAL only]" if bal_only else ""
+            logger.info(f"Created StakeDAO v2 bribe for {chain_name} gauge {gauge_address} (campaign on {destination_chain_name}): ${row['amount']:.2f} USDC{mode_tag} (includes {eth_amount:.6f} ETH for CCIP)")
 
     def validate_gauge_requirements(self, gauge_address: str) -> Tuple[bool, Optional[str]]:
         """StakeDAO doesn't have specific gauge requirements"""
@@ -190,18 +189,3 @@ class StakeDAOPlatform(BribePlatform):
     @property
     def platform_name(self) -> str:
         return "stakedao"
-
-    @property
-    def supported_markets(self) -> List[str]:
-        return ["balancer"]
-
-    def get_platform_for_market(self, market: str, voting_pool_override: Optional[str]) -> str:
-        if market == "aura":
-            return "hh"
-
-        if market == "balancer":
-            if voting_pool_override == "aura":
-                return "hh"
-            return "stakedao"
-
-        return "hh"

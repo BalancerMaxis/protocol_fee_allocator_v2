@@ -1,9 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
 import pytz
-import requests
-from fee_allocator.constants import HH_API_URL
-from web3 import Web3
 import os
 from dotenv import load_dotenv
 import json
@@ -43,16 +40,6 @@ def get_last_thursday_odd_week():
     )
 
     return last_thursday_odd_utc
-
-
-def get_hh_aura_target(target: str) -> str:
-    response = requests.get(f"{HH_API_URL}/aura")
-    options = response.json()["data"]
-    for option in options:
-        if Web3.to_checksum_address(option["proposal"]) == target:
-            return option["proposalHash"]
-    return False
-
 
 
 def fetch_collected_fees(start_date: str, end_date: str, fees_file_name: str = None, protocol_version: str = "v2") -> dict:

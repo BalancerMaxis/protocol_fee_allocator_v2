@@ -16,8 +16,7 @@ from fee_allocator.constants import ALLIANCE_CONFIG_URL, PARTNER_CONFIG_URL
 class PayloadVisualizer:
     # Transaction group display order
     TRANSACTION_PRIORITY_ORDER = [
-        "Aura Bribes",
-        "Balancer Bribes", 
+        "Vote Incentives",
         "veBAL Transfers",
         "DAO Transfers",
         "Beets Transfers",
@@ -125,24 +124,8 @@ class PayloadVisualizer:
             to_addr = tx.get("to", "").lower()
             method = tx.get("contractMethod", {}).get("name", "")
             
-            if method == "depositBribe":
-                if to_addr == self.book.get("hidden_hand2/aura_briber", "").lower():
-                    groups["Aura Bribes"].append(tx)
-                elif to_addr == self.book.get("hidden_hand2/balancer_briber", "").lower():
-                    groups["Balancer Bribes"].append(tx)
-            elif method in ["createRangedQuest", "createFixedQuest"]:
-                # Paladin Quest Boards
-                to_addr_lower = to_addr.lower()
-                if to_addr_lower == "0xfeb352930ca196a80b708cdd5dcb4eca94805dab":  # veBAL Quest Board
-                    groups["Balancer Bribes"].append(tx)
-                elif to_addr_lower == "0xfd9f19a9b91becae3c8dabc36cdd1ea86fc1a222":  # vlAURA Quest Board
-                    groups["Aura Bribes"].append(tx)
-            elif method == "createCampaign":
-                # StakeDAO VoteMarket v2
-                if to_addr.lower() == "0x53ad4cd1f1e52dd02aa9fc4a8250a1b74f351ca2":  # CampaignRemoteManager
-                    groups["Balancer Bribes"].append(tx)
-            elif method == "createBounty":
-                groups["Balancer Bribes"].append(tx)
+            if method == "createCampaign":
+                groups["Vote Incentives"].append(tx)
             elif method == "transfer":
                 recipient = tx.get("contractInputsValues", {}).get("_to", "").lower()
                 if recipient == self.book.get("maxiKeepers/veBalFeeInjector", "").lower():
@@ -224,7 +207,8 @@ class PayloadVisualizer:
             if v2_data and v3_data:
                 return {
                     'coreFees': v2_data.get('coreFees', 0) + v3_data.get('coreFees', 0),
-                    'noncoreFees': v2_data.get('noncoreFees', 0) + v3_data.get('noncoreFees', 0)
+                    'noncoreFees': v2_data.get('noncoreFees', 0) + v3_data.get('noncoreFees', 0),
+                    'bribeThreshold': v3_data.get('bribeThreshold') or v2_data.get('bribeThreshold')
                 }
             elif v2_data:
                 return v2_data
@@ -239,59 +223,10 @@ class PayloadVisualizer:
                 return recon_data[-1] if recon_data else {}
         return {}
     
-    def load_gauge_issues(self, gauge_issues_path: Path = None) -> List[Dict]:
-        """Load gauge issues from paladin_gauge_status JSON if provided.
-        Can handle a single Path or a list of Paths.
-        """
-        if not gauge_issues_path:
-            return []
-            
-        # Handle both single path and list of paths
-        if isinstance(gauge_issues_path, list):
-            all_issues = []
-            for path in gauge_issues_path:
-                if path and path.exists():
-                    with open(path) as f:
-                        all_issues.extend(json.load(f))
-            return all_issues
-        elif gauge_issues_path.exists():
-            with open(gauge_issues_path) as f:
-                return json.load(f)
-        return []
-    
-    def create_gauge_issues_table(self, gauge_issues: List[Dict]) -> Table:
-        """Create a table for gauge issues"""
-        table = Table(
-            title="[bold red]⚠️  Paladin Gauge Configuration Required[/bold red]",
-            box=box.ROUNDED,
-            title_style="bold red",
-            header_style="bold red",
-            border_style="red"
-        )
-        
-        table.add_column("Gauge", style="dim")
-        table.add_column("Pool ID", style="dim")
-        table.add_column("Chain", style="dim")
-        table.add_column("Amount", style="bold", justify="right")
-        table.add_column("Action Required", style="yellow")
-        
-        for issue in gauge_issues:
-            table.add_row(
-                issue.get("gauge", ""),
-                issue.get("pool_id", ""),
-                issue.get("chain", ""),
-                f"${issue.get('amount', 0):,.2f}",
-                issue.get("action", "")
-            )
-        
-        return table
-    
     def calculate_totals(self, groups: Dict[str, List[Dict]]) -> Dict[str, Decimal]:
         """Calculate all totals from grouped transactions"""
         totals = {
             "bribes_usdc": Decimal(0),
-            "aura_bribes_usdc": Decimal(0),
-            "bal_bribes_usdc": Decimal(0),
             "dao_usdc": Decimal(0),
             "vebal_usdc": Decimal(0),
             "vebal_bal": Decimal(0),
@@ -299,52 +234,21 @@ class PayloadVisualizer:
             "alliance_usdc": Decimal(0),
             "beets_usdc": Decimal(0),
         }
-        
+
         for group_name, txs in groups.items():
             for tx in txs:
-                if "Bribe" in group_name:
+                if group_name == "Vote Incentives":
                     method = tx.get("contractMethod", {}).get("name", "")
-                    if method in ["createRangedQuest", "createFixedQuest"]:
-                        if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
-                            # For Paladin, include both totalRewardAmount and feeAmount
-                            total_reward = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
-                            fee_amount = Decimal(tx["contractInputsValues"].get("feeAmount", "0"))
-                            amount = total_reward + fee_amount
-                            totals["bribes_usdc"] += amount
-                            if group_name == "Aura Bribes":
-                                totals["aura_bribes_usdc"] += amount
-                            elif group_name == "Balancer Bribes":
-                                totals["bal_bribes_usdc"] += amount
-                    elif method == "createBounty":
-                        if tx.get("contractInputsValues", {}).get("rewardToken", "").lower() == self.book.get("tokens/USDC", "").lower():
-                            amount = Decimal(tx["contractInputsValues"]["totalRewardAmount"])
-                            totals["bribes_usdc"] += amount
-                            if group_name == "Balancer Bribes":
-                                totals["bal_bribes_usdc"] += amount
-                    elif method == "createCampaign":
+                    if method == "createCampaign":
                         params_str = tx.get("contractInputsValues", {}).get("params", "")
-                        # Handle both JSON string and Python tuple formats
                         if params_str.startswith('['):
-                            # JSON format
                             params = json.loads(params_str)
                         else:
-                            # Python tuple format (legacy)
                             import ast
                             params = ast.literal_eval(params_str)
-                        token = params[3].lower()  # reward token
+                        token = params[3].lower()
                         if token == self.book.get("tokens/USDC", "").lower():
-                            amount = Decimal(params[6])  # totalRewardAmount
-                            totals["bribes_usdc"] += amount
-                            if group_name == "Balancer Bribes":
-                                totals["bal_bribes_usdc"] += amount
-                    else:
-                        if tx.get("contractInputsValues", {}).get("_token", "").lower() == self.book.get("tokens/USDC", "").lower():
-                            amount = Decimal(tx["contractInputsValues"]["_amount"])
-                            totals["bribes_usdc"] += amount
-                            if group_name == "Aura Bribes":
-                                totals["aura_bribes_usdc"] += amount
-                            elif group_name == "Balancer Bribes":
-                                totals["bal_bribes_usdc"] += amount
+                            totals["bribes_usdc"] += Decimal(params[6])
                 elif group_name == "veBAL Transfers":
                     if tx.get("to", "").lower() == self.book.get("tokens/USDC", "").lower():
                         totals["vebal_usdc"] += Decimal(tx["contractInputsValues"]["_value"])
@@ -367,50 +271,20 @@ class PayloadVisualizer:
     def extract_transaction_data(self, group_name: str, tx: Dict) -> Dict[str, str]:
         """Extract formatted data from a transaction based on its type"""
         data = {}
-        
-        if "Bribe" in group_name:
-            method = tx.get("contractMethod", {}).get("name", "")
-            if method in ["createRangedQuest", "createFixedQuest"]:
-                gauge = tx.get("contractInputsValues", {}).get("gauge", "")
-                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
-                # For Paladin, add totalRewardAmount + feeAmount to show full allocated amount
-                total_reward = int(tx.get("contractInputsValues", {}).get("totalRewardAmount", "0"))
-                fee_amount = int(tx.get("contractInputsValues", {}).get("feeAmount", "0"))
-                data["col2"] = self.format_amount(str(total_reward + fee_amount))
-                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
-                data["col4"] = "Paladin"
-            elif method == "createBounty":
-                gauge = tx.get("contractInputsValues", {}).get("gauge", "")
-                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
-                amount = tx.get("contractInputsValues", {}).get("totalRewardAmount", "0")
-                data["col2"] = self.format_amount(amount)
-                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("rewardToken", ""))
-                data["col4"] = "StakeDAO v1"
-            elif method == "createCampaign":
-                params_str = tx.get("contractInputsValues", {}).get("params", "")
-                # Handle both JSON string and Python tuple formats
-                if params_str.startswith('['):
-                    # JSON format
-                    params = json.loads(params_str)
-                else:
-                    # Python tuple format (legacy)
-                    import ast
-                    params = ast.literal_eval(params_str)
-                # params = (chainId, gauge, manager, token, periods, maxReward, totalReward, whitelist, hook, isWhitelist)
-                gauge = params[1]  # gauge address
-                data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
-                token = params[3]  # reward token
-                data["col3"] = self.format_address(token)
-                amount = str(params[6])  # totalRewardAmount
-                data["col2"] = self.format_amount(amount)
-                data["col4"] = "StakeDAO v2"
+
+        if group_name == "Vote Incentives":
+            params_str = tx.get("contractInputsValues", {}).get("params", "")
+            if params_str.startswith('['):
+                params = json.loads(params_str)
             else:
-                proposal = tx.get("contractInputsValues", {}).get("_proposal", "")
-                data["col1"] = f"{proposal[:10]}..." if len(proposal) > 10 else proposal
-                data["col2"] = self.format_amount(tx.get("contractInputsValues", {}).get("_amount", "0"))
-                data["col3"] = self.format_address(tx.get("contractInputsValues", {}).get("_token", ""))
-                data["col4"] = "HiddenHand"
-        
+                import ast
+                params = ast.literal_eval(params_str)
+            gauge = params[1]
+            data["col1"] = f"{gauge[:10]}..." if len(gauge) > 10 else gauge
+            data["col2"] = self.format_amount(str(params[6]))
+            data["col3"] = self.format_address(params[3])
+            data["col4"] = "StakeDAO v2"
+
         elif group_name in self.TRANSFER_GROUPS:
             data["col1"] = self.format_address(tx.get("contractInputsValues", {}).get("_to", ""))
             amount = tx.get("contractInputsValues", {}).get("_value", "0")
@@ -435,8 +309,8 @@ class PayloadVisualizer:
     
     def get_table_headers(self, group_name: str) -> List[str]:
         """Get table headers based on transaction group"""
-        if "Bribe" in group_name:
-            return ["Gauge/Proposal", "Amount", "Token", "Market"]
+        if group_name == "Vote Incentives":
+            return ["Gauge", "Amount", "Token", "Platform"]
         elif group_name in self.TRANSFER_GROUPS:
             return ["Recipient", "Amount", "Token"]
         elif group_name == "Token Approvals":
@@ -496,15 +370,10 @@ class PayloadVisualizer:
         md.append(f"**Total Transactions:** {total_txs}\n")
         
         if totals['bribes_usdc'] > 0:
-            aura_pct = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-            bal_pct = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-            
             md.append(f"**Vote Incentives:** ${totals['bribes_usdc']/Decimal(1e6):,.2f}")
             if 'vote_incentives_pct_of_core' in metrics:
                 md.append(f" ({metrics['vote_incentives_pct_of_core']}% of core pool fees)")
             md.append("\n")
-            md.append(f"  - Aura: ${totals['aura_bribes_usdc']/Decimal(1e6):,.2f} ({aura_pct}%)\n")
-            md.append(f"  - Balancer: ${totals['bal_bribes_usdc']/Decimal(1e6):,.2f} ({bal_pct}%)\n")
         
         md.append(f"**DAO Fees:** ${totals['dao_usdc']/Decimal(1e6):,.2f} ({metrics.get('dao_pct', 0)}% of total)\n")
         md.append(f"**veBAL Fees:** ${totals['vebal_usdc']/Decimal(1e6):,.2f} ({metrics.get('vebal_pct', 0)}% of total)\n")
@@ -544,51 +413,39 @@ class PayloadVisualizer:
         
         return "\n".join(md)
     
-    def export_markdown(self, payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None) -> str:
+    def export_markdown(self, payload_path: Path, fee_files: List[Path] = None) -> str:
         """Export payload visualization as markdown"""
-        # Load payload
         payload = self.parse_payload(payload_path)
-        
-        # Load fee files if provided
+
         total_fees_collected, fee_details_raw = self._load_fee_files(fee_files)
         fee_details = [f"- {detail}" for detail in fee_details_raw]
-        
-        # Group transactions
+
         groups = self.group_transactions(payload["transactions"])
-        
+
         md = []
         md.append(f"# Fee Allocator Payload Report")
         md.append(f"\n**File:** {payload_path.name}")
         md.append(f"**Created:** {payload['meta'].get('name', 'Unknown')}")
-        
+
         if fee_details:
             md.append("\n## Fees Collected")
             md.extend(fee_details)
             md.append(f"**Total:** ${total_fees_collected/Decimal(1e6):,.2f}")
-        
+
         md.append("")
 
         recon_data = self.load_recon_data(payload_path)
-        
-        # Add summary
+
         md.append(self.generate_markdown_summary(payload, groups, total_fees_collected, recon_data))
-        
-        # Check for gauge issues
-        gauge_issues = self.load_gauge_issues(gauge_issues_path)
-        if gauge_issues:
-            md.append("\n## ⚠️ Gauge Configuration Required\n")
-            md.append("| Gauge | Pool ID | Chain | Amount | Action Required |")
-            md.append("|-------|---------|-------|--------|-----------------|")
-            for issue in gauge_issues:
-                md.append(f"| {issue.get('gauge', '')} | {issue.get('pool_id', '')} | {issue.get('chain', '')} | ${issue.get('amount', 0):,.2f} | {issue.get('action', '')} |")
-        
-        # Add transaction tables in priority order
+
         md.append("\n## Transaction Details")
-        
+
+        md.append(f"\n**Bribe Threshold:** ${recon_data['bribeThreshold']}")
+
         for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 md.append(self.generate_markdown_table(group_name, groups[group_name]))
-        
+
         return "\n".join(md)
     
     def create_summary_panel(self, payload: Dict, groups: Dict[str, List[Dict]], total_fees_collected: Decimal = Decimal(0), recon_data: Dict = None) -> Panel:
@@ -606,17 +463,12 @@ class PayloadVisualizer:
         
         if totals['bribes_usdc'] > 0:
             lines.append("[yellow]USDC Allocations:[/yellow]")
-            
+
             vote_incentives_line = f"• Vote Incentives: [bold]${totals['bribes_usdc']/Decimal(1e6):,.2f}[/bold]"
             if 'vote_incentives_pct_of_core' in metrics:
                 vote_incentives_line += f" ({metrics['vote_incentives_pct_of_core']}% of core pool fees)"
             lines.append(vote_incentives_line)
-            
-            aura_pct = (totals['aura_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-            bal_pct = (totals['bal_bribes_usdc'] / totals['bribes_usdc'] * 100).quantize(Decimal('0.01'))
-            lines.append(f"  → Aura: ${totals['aura_bribes_usdc']/Decimal(1e6):,.2f} ({aura_pct}%)")
-            lines.append(f"  → Balancer: ${totals['bal_bribes_usdc']/Decimal(1e6):,.2f} ({bal_pct}%)")
-        
+
         lines.append(f"• DAO Fees: [bold]${totals['dao_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('dao_pct', 0)}% of total)")
         lines.append(f"• veBAL Fees: [bold]${totals['vebal_usdc']/Decimal(1e6):,.2f}[/bold] ({metrics.get('vebal_pct', 0)}% of total)")
         
@@ -675,8 +527,7 @@ class PayloadVisualizer:
         """Create a table for a group of transactions"""
         # Color scheme based on transaction type
         color_map = {
-            "Aura Bribes": "cyan",
-            "Balancer Bribes": "blue",
+            "Vote Incentives": "cyan",
             "veBAL Transfers": "magenta",
             "DAO Transfers": "green",
             "Beets Transfers": "cyan",
@@ -716,170 +567,136 @@ class PayloadVisualizer:
         
         return table
     
-    def visualize_payload(self, payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None):
+    def visualize_payload(self, payload_path: Path, fee_files: List[Path] = None):
         """Main visualization function"""
         self.console.clear()
-        
-        # Load payload
+
         payload = self.parse_payload(payload_path)
-        
-        # Load fee files if provided
         total_fees_collected, fee_details = self._load_fee_files(fee_files)
-        
-        # Group transactions
         groups = self.group_transactions(payload["transactions"])
-        
-        # Create header
+
         header_text = f"[bold cyan]Fee Allocator Payload Visualization[/bold cyan]\n"
         header_text += f"[dim]File: {payload_path.name}[/dim]\n"
         header_text += f"[dim]Created: {payload['meta'].get('name', 'Unknown')}[/dim]"
-        
+
         if fee_details:
             header_text += f"\n\n[bold yellow]Fees Collected:[/bold yellow]"
             for detail in fee_details:
                 header_text += f"\n• {detail}"
             header_text += f"\n[bold]Total: ${total_fees_collected/Decimal(1e6):,.2f}[/bold]"
-        
+
         header = Panel(
             header_text,
             box=box.DOUBLE,
             border_style="bright_cyan",
             padding=(1, 2)
         )
-        
+
         self.console.print(header)
         self.console.print()
-        
-        # Load recon data
+
         recon_data = self.load_recon_data(payload_path)
-        
-        # Create and print summary
+
         summary = self.create_summary_panel(payload, groups, total_fees_collected, recon_data)
         self.console.print(summary)
         self.console.print()
-        
-        gauge_issues = self.load_gauge_issues(gauge_issues_path)
-        if gauge_issues:
-            gauge_table = self.create_gauge_issues_table(gauge_issues)
-            self.console.print(gauge_table)
-            self.console.print()
-        
+
         for group_name in self.TRANSACTION_PRIORITY_ORDER:
             if group_name in groups and groups[group_name]:
                 table = self.create_transaction_table(group_name, groups[group_name])
                 self.console.print(table)
                 self.console.print()
-        
 
-def visualize_payload(payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None):
+
+def visualize_payload(payload_path: Path, fee_files: List[Path] = None):
     """Convenience function to visualize a payload"""
     visualizer = PayloadVisualizer()
-    visualizer.visualize_payload(payload_path, fee_files, gauge_issues_path)
+    visualizer.visualize_payload(payload_path, fee_files)
 
 
-def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None):
+def visualize_combined_payload(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None):
     """Visualize a combined payload with fee comparison"""
     fee_files = []
     if v2_fees_file and v2_fees_file.exists():
         fee_files.append(v2_fees_file)
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
-    
+
     visualizer = PayloadVisualizer()
-    visualizer.visualize_payload(payload_path, fee_files, gauge_issues_path)
+    visualizer.visualize_payload(payload_path, fee_files)
 
 
-def export_markdown(payload_path: Path, fee_files: List[Path] = None, gauge_issues_path: Path = None) -> str:
+def export_markdown(payload_path: Path, fee_files: List[Path] = None) -> str:
     """Export payload visualization as markdown"""
     visualizer = PayloadVisualizer()
-    return visualizer.export_markdown(payload_path, fee_files, gauge_issues_path)
+    return visualizer.export_markdown(payload_path, fee_files)
 
-def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None) -> str:
+
+def export_combined_markdown(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> str:
     """Export combined payload visualization as markdown"""
     fee_files = []
     if v2_fees_file and v2_fees_file.exists():
         fee_files.append(v2_fees_file)
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
-    
-    return export_markdown(payload_path, fee_files, gauge_issues_path)
+
+    return export_markdown(payload_path, fee_files)
 
 
-def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, output_path: Path = None, gauge_issues_path: Path = None) -> Path:
-    """Generate and save payload report to reports directory
-    
-    Args:
-        payload_path: Path to the payload JSON file
-        fee_files: Optional list of fee collection JSON files
-        output_path: Optional output path. If not provided, saves to reports directory
-        gauge_issues_path: Optional path to gauge issues JSON file
-        
-    Returns:
-        Path to the saved report
-    """
+def save_markdown_report(payload_path: Path, fee_files: List[Path] = None, output_path: Path = None) -> Path:
+    """Generate and save payload report to reports directory"""
     from fee_allocator.accounting import PROJECT_ROOT
-    
-    # Generate markdown content
-    markdown_content = export_markdown(payload_path, fee_files, gauge_issues_path)
-    
+
+    markdown_content = export_markdown(payload_path, fee_files)
+
     if output_path is None:
-        # Extract date from payload filename
         date_str = payload_path.stem
         if date_str.startswith(("v2_", "v3_")):
             date_str = date_str[3:]
-        
-        # Save to reports directory
+
         reports_dir = Path(PROJECT_ROOT) / "fee_allocator" / "reports"
         reports_dir.mkdir(exist_ok=True, parents=True)
         output_path = reports_dir / f"{date_str}.md"
-    
+
     output_path.write_text(markdown_content)
     print(f"\nMarkdown report saved to: {output_path}")
     return output_path
 
 
-def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None, gauge_issues_path: Path = None) -> Path:
-    """Generate and save combined payload report to reports directory
-    
-    This is a convenience wrapper that handles the v2/v3 fee files specifically.
-    """
+def save_combined_report(payload_path: Path, v2_fees_file: Path = None, v3_fees_file: Path = None) -> Path:
+    """Generate and save combined payload report to reports directory"""
     fee_files = []
     if v2_fees_file and v2_fees_file.exists():
         fee_files.append(v2_fees_file)
     if v3_fees_file and v3_fees_file.exists():
         fee_files.append(v3_fees_file)
-    
-    return save_markdown_report(payload_path, fee_files, gauge_issues_path=gauge_issues_path)
+
+    return save_markdown_report(payload_path, fee_files)
 
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Visualize fee allocator payload")
     parser.add_argument("payload_file", type=Path, help="Path to payload JSON file")
     parser.add_argument("--markdown", action="store_true", help="Export as markdown instead of rich output")
-    parser.add_argument("--output", type=Path, help="Output file for markdown export (defaults to reports directory)")
-    parser.add_argument("--v2-fees", type=Path, help="Path to v2 fees JSON file")
-    parser.add_argument("--v3-fees", type=Path, help="Path to v3 fees JSON file")
-    parser.add_argument("--gauge-issues", type=Path, help="Path to paladin_gauge_status JSON file")
-    
+    parser.add_argument("--output", type=Path, help="Output file for markdown export")
+    parser.add_argument("--v2_fees", type=Path, help="Path to v2 fees JSON file")
+    parser.add_argument("--v3_fees", type=Path, help="Path to v3 fees JSON file")
+
     args = parser.parse_args()
-    
+
     if args.markdown:
-        markdown_content = export_combined_markdown(args.payload_file, args.v2_fees, args.v3_fees, args.gauge_issues)
+        markdown_content = export_combined_markdown(args.payload_file, args.v2_fees, args.v3_fees)
         if args.output:
             output_path = args.output
         else:
-            # Default to reports directory with same filename as payload
             reports_dir = Path(__file__).parent / "reports"
             reports_dir.mkdir(exist_ok=True)
             output_path = reports_dir / args.payload_file.with_suffix('.md').name
-            
-        if args.output or not output_path.exists():
-            output_path.parent.mkdir(exist_ok=True, parents=True)
-            output_path.write_text(markdown_content)
-            print(f"Markdown exported to {output_path}")
-        else:
-            print(markdown_content)
+
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+        output_path.write_text(markdown_content)
+        print(f"Markdown exported to {output_path}")
     else:
-        visualize_combined_payload(args.payload_file, args.v2_fees, args.v3_fees, args.gauge_issues)
+        visualize_combined_payload(args.payload_file, args.v2_fees, args.v3_fees)
