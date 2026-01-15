@@ -82,7 +82,7 @@ class FeeAllocator:
         redistributed to eligible pools above the threshold.
 
         """
-        min_amount = self.run_config.fee_config.min_aura_incentive
+        min_amount = self.run_config.fee_config.min_total_bribe_threshold
         logger.info(f"Redistribution threshold: ${min_amount}")
 
         for chain in self.run_config.all_chains:
@@ -514,7 +514,7 @@ class FeeAllocator:
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1],
-            "bribeThreshold": self.run_config.fee_config.min_aura_incentive
+            "bribeThreshold": self.run_config.fee_config.min_total_bribe_threshold
         }
 
         recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries" / f"{self.run_config.protocol_version}_recon.json"
