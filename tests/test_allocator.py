@@ -46,11 +46,6 @@ def test_fee_allocator_allocation_process(allocator: FeeAllocator):
     # Verify core pool chains were initialized
     assert hasattr(allocator.run_config, '_chains')
     assert isinstance(allocator.run_config._chains, dict)
-    
-    # Verify aura vebal share was set
-    assert allocator.run_config.aura_vebal_share is not None
-    assert isinstance(allocator.run_config.aura_vebal_share, Decimal)
-    assert 0 <= allocator.run_config.aura_vebal_share <= 1
 
 @pytest.fixture
 def allocated_allocator(allocator: FeeAllocator):
@@ -148,31 +143,6 @@ def test_noncore_allocation(allocated_allocator: FeeAllocator):
         assert abs(noncore_vebal_pct - fee_config.noncore_vebal_share_pct) <= Decimal('0.02'), \
             f"Non-core veBAL {noncore_vebal_pct:.4f} not within 2% of target {fee_config.noncore_vebal_share_pct}"
 
-
-
-def test_aura_bal_incentive_split(allocated_allocator: FeeAllocator):
-    """Test that incentives are split correctly between Aura and BAL"""
-    total_aura = Decimal(0)
-    total_bal = Decimal(0)
-    
-    for chain in allocated_allocator.run_config.all_chains:
-        for pool in chain.core_pools:
-            total_aura += pool.to_aura_incentives_usd
-            total_bal += pool.to_bal_incentives_usd
-    
-    total_incentives = total_aura + total_bal
-    
-    if total_incentives > 0:
-        actual_aura_share = total_aura / total_incentives
-        actual_bal_share = total_bal / total_incentives
-        
-        # Redistribution of incentives may deviate from the target, so a lenient check is used
-        assert actual_aura_share > Decimal('0.1'), \
-            f"Aura share {actual_aura_share:.4f} is too low"
-        assert actual_bal_share > Decimal('0.1'), \
-            f"BAL share {actual_bal_share:.4f} is too low"
-        assert abs(actual_aura_share + actual_bal_share - 1) < Decimal('0.001'), \
-            "Aura and BAL shares don't add up to 100%"
 
 
 def test_beets_fee_split(allocator_exact: FeeAllocator):

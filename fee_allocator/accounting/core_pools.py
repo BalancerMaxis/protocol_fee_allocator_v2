@@ -100,8 +100,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
         self.original_earned_fee_share = Decimal(0)
         self.earned_fee_share_of_chain_usd = self._earned_fee_share_of_chain_usd()
         self.total_to_incentives_usd = self._total_to_incentives_usd()
-        self.to_aura_incentives_usd = self._to_aura_incentives_usd()
-        self.to_bal_incentives_usd = self._to_bal_incentives_usd()
         self.to_dao_usd = self._to_dao_usd()
         self.to_vebal_usd = self._to_vebal_usd()
         self.to_partner_usd = self._to_partner_usd()
@@ -165,29 +163,6 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
 
         to_distribute_to_incentives = core_fees * vote_incentive_pct
         return self.earned_fee_share_of_chain_usd * to_distribute_to_incentives
-
-    def _calculate_incentive_split(self, platform: str) -> Decimal:
-        # Alliance core pools get 100% to AURA
-        if self.is_alliance_core_pool:
-            return self.total_to_incentives_usd if platform == "aura" else Decimal(0)
-
-        if self.voting_pool_override == "split" or self.voting_pool_override is None:
-            aura_share = self.chain.chains.aura_vebal_share
-            return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
-
-        if self.voting_pool_override == platform:
-            return self.total_to_incentives_usd
-        elif self.voting_pool_override and self.voting_pool_override != platform:
-            return Decimal(0)
-
-        aura_share = self.chain.chains.aura_vebal_share
-        return self.total_to_incentives_usd * (aura_share if platform == "aura" else (1 - aura_share))
-
-    def _to_aura_incentives_usd(self) -> Decimal:
-        return self._calculate_incentive_split("aura")
-
-    def _to_bal_incentives_usd(self) -> Decimal:
-        return self._calculate_incentive_split("bal")
 
     def _to_dao_usd(self) -> Decimal:
         core_fees = self._core_pool_allocation()
