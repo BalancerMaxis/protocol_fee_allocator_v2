@@ -70,6 +70,7 @@ class FeeAllocator:
         Non-core pools: 82.5% veBAL, 17.5% DAO
         """
         self.run_config.set_core_pool_chains_data()
+        self.run_config.set_aura_vebal_share()
         self.run_config.set_initial_pool_allocation()
         if redistribute:
             self.redistribute_fees()
@@ -79,11 +80,13 @@ class FeeAllocator:
         Redistributes fees among pools based on minimum incentive amounts.
 
         Pools with total incentives below the minimum threshold get their incentives
-        redistributed to eligible pools above the threshold.
-
+        redistributed to eligible pools above the threshold. The threshold is scaled
+        by Aura's veBAL share to ensure the effective Aura incentive meets the minimum.
         """
-        min_amount = self.run_config.fee_config.min_aura_incentive
-        logger.info(f"Redistribution threshold: ${min_amount}")
+        min_aura = Decimal(self.run_config.fee_config.min_aura_incentive)
+        aura_share = self.run_config.aura_vebal_share
+        min_amount = min_aura / aura_share
+        logger.info(f"Redistribution threshold: ${min_amount:.0f} (${min_aura:.0f} min Aura / {aura_share:.2%} veBAL share)")
 
         for chain in self.run_config.all_chains:
             pools_to_redistribute = [p for p in chain.core_pools if p.total_to_incentives_usd < min_amount]
@@ -514,7 +517,9 @@ class FeeAllocator:
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1],
-            "bribeThreshold": self.run_config.fee_config.min_aura_incentive
+            "minAuraIncentive": self.run_config.fee_config.min_aura_incentive,
+            "auraVebalShare": float(round(self.run_config.aura_vebal_share, 4)),
+            "bribeThreshold": int(self.run_config.fee_config.min_aura_incentive / self.run_config.aura_vebal_share)
         }
 
         recon_file = Path(PROJECT_ROOT) / "fee_allocator/summaries" / f"{self.run_config.protocol_version}_recon.json"

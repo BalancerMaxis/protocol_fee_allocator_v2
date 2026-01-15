@@ -83,6 +83,7 @@ class CorePoolRunConfig:
         self.cache_dir.mkdir(exist_ok=True)
 
         self._chains: Union[dict[str, CorePoolChain], None] = None
+        self.aura_vebal_share: Union[Decimal, None] = None
         self.protocol_version = protocol_version
 
 
@@ -115,6 +116,15 @@ class CorePoolRunConfig:
                 _chains[chain_name] = chain
 
         self._chains = _chains
+
+    def set_aura_vebal_share(self):
+        if not self.mainnet:
+            raise ValueError(
+                "mainnet must be initialized to calculate aura vebal share"
+            )
+        self.aura_vebal_share = self.mainnet.subgraph.calculate_aura_vebal_share(
+            self.mainnet.web3, self.mainnet.block_range[1]
+        )
 
     def set_initial_pool_allocation(self) -> None:
         """
