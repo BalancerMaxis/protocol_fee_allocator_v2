@@ -15,7 +15,7 @@ class PoolOverride(BaseModel):
 
 
 class GlobalFeeConfig(BaseModel):
-    min_aura_incentive: int = 0
+    min_total_bribe_threshold: int = 0
 
     vebal_share_pct: Decimal
     dao_share_pct: Decimal
@@ -27,8 +27,8 @@ class GlobalFeeConfig(BaseModel):
     beets_share_pct: Decimal
 
     @model_validator(mode="after")
-    def set_dynamic_min_aura_incentive(self):
-        self.min_aura_incentive = StakeDAO().calculate_dynamic_min_incentive()
+    def set_dynamic_min_total_bribe_threshold(self):
+        self.min_total_bribe_threshold = StakeDAO().calculate_dynamic_min_incentive()
         return self
 
 
