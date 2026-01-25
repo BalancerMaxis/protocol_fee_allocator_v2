@@ -1,8 +1,6 @@
-from pydantic import BaseModel, model_validator, validator
+from pydantic import BaseModel, validator
 from decimal import Decimal
 from typing import Dict, NewType, Optional
-
-from bal_tools import StakeDAO
 
 
 Pools = Dict[NewType("PoolId", str), NewType("Symbol", str)]
@@ -25,11 +23,6 @@ class GlobalFeeConfig(BaseModel):
     noncore_dao_share_pct: Decimal
 
     beets_share_pct: Decimal
-
-    @model_validator(mode="after")
-    def set_dynamic_min_total_bribe_threshold(self):
-        self.min_total_bribe_threshold = StakeDAO().calculate_dynamic_min_incentive()
-        return self
 
 
 class AlliancePool(BaseModel):
