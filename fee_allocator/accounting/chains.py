@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from web3 import Web3
 import requests
-from bal_tools import Subgraph, BalPoolsGauges, Web3RpcByChain
+from bal_tools import Subgraph, BalPoolsGauges, Web3RpcByChain, StakeDAO
 import joblib
 from bal_tools.subgraph import DateRange
 from bal_tools.models import PoolSnapshot, Pool
@@ -115,6 +115,14 @@ class CorePoolRunConfig:
                 _chains[chain_name] = chain
 
         self._chains = _chains
+        self._set_bribe_threshold()
+
+    def _set_bribe_threshold(self) -> None:
+        end_block = self._chains["mainnet"].block_range[1]
+        self.fee_config.min_total_bribe_threshold = StakeDAO().calculate_dynamic_min_incentive(
+            block_number=end_block
+        )
+        logger.info(f"min_total_bribe_threshold: ${self.fee_config.min_total_bribe_threshold} (block {end_block})")
 
     def set_initial_pool_allocation(self) -> None:
         """
