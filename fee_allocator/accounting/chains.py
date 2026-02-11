@@ -3,6 +3,7 @@ from typing import List, Dict, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import os
+import time
 from dotenv import load_dotenv
 
 from web3 import Web3
@@ -211,9 +212,22 @@ class CorePoolChain(AbstractCorePoolChain):
         self.partner_pools_map: Dict[str, Partner] = {}  # pool_id -> Partner mapping
         self.partner_noncore_fee_data: List[PoolFeeData] = []
 
+    def _fetch_block_with_retries(self, timestamp: int, max_attempts: int = 3) -> int:
+        for attempt in range(max_attempts):
+            try:
+                block = self.subgraph.get_first_block_after_utc_timestamp(timestamp)
+                if block is not None:
+                    return block
+                raise Exception(f"No block found for timestamp {timestamp} on {self.name}")
+            except Exception:
+                if attempt < max_attempts - 1:
+                    time.sleep((attempt + 1) * 2)
+                else:
+                    raise
+
     def _set_block_range(self) -> tuple[int, int]:
-        start = self.subgraph.get_first_block_after_utc_timestamp(self.chains.date_range[0])
-        end = self.subgraph.get_first_block_after_utc_timestamp(self.chains.date_range[1])
+        start = self._fetch_block_with_retries(self.chains.date_range[0])
+        end = self._fetch_block_with_retries(self.chains.date_range[1])
         logger.info(f"set blocks for {self.name}: {start} - {end}")
         return (start, end)
     
