@@ -23,17 +23,29 @@ def get_report(start_date, end_date, env_id):
     )
     response.raise_for_status()
     data = response.json()
-    
-    usdc = data["withdraws"]["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
+
+    usdc_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    withdraws = data.get("withdraws", {})
+    if usdc_address not in withdraws:
+        print(f"No USDC withdrawals found for env {env_id}, returning empty report")
+        return {}
+
+    usdc = withdraws[usdc_address]
     total_net = int(usdc["net"])
     total_gross_usdc = int(usdc["total"])
-    
+
+    if total_net <= 0:
+        print(f"No net fees for env {env_id}, returning empty report")
+        return {}
+
     depositors = {k.replace("-v3", ""): int(v) for k, v in data["depositors"].items()}
     total_gross = sum(depositors.values())
-    
+
     if total_gross != total_gross_usdc:
-        raise ValueError(f"Depositors sum {total_gross} doesn't match USDC total {total_gross_usdc}")
-    
+        raise ValueError(
+            f"Depositors sum {total_gross} doesn't match USDC total {total_gross_usdc}"
+        )
+
     # calc each chain's share of net amount based on its proportion of gross fees
     report = {
         chain: int(total_net * amount / total_gross)
@@ -45,12 +57,10 @@ def get_report(start_date, end_date, env_id):
     if rounding_diff:
         largest_chain = max(report, key=report.get)
         report[largest_chain] += rounding_diff
-    
+
     if sum(report.values()) != total_net:
         raise ValueError(f"Total mismatch: {sum(report.values())} != {total_net}")
-    
-    if total_net <= 0:
-        raise ValueError("No fees collected")
+
     return report
 
 
@@ -64,7 +74,9 @@ if __name__ == "__main__":
         yesterday = today - timedelta(days=1)
         epoch_start = today - timedelta(days=14)
 
-        v2_report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V2_ENV_ID)
+        v2_report = get_report(
+            yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V2_ENV_ID
+        )
 
         with open(
             f"fee_allocator/fees_collected/v2_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
@@ -72,7 +84,9 @@ if __name__ == "__main__":
         ) as f:
             json.dump(v2_report, f, indent=2)
 
-        v3_report = get_report(yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V3_ENV_ID)
+        v3_report = get_report(
+            yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V3_ENV_ID
+        )
 
         with open(
             f"fee_allocator/fees_collected/v3_fees_{epoch_start.strftime('%Y-%m-%d')}_{today.strftime('%Y-%m-%d')}.json",
@@ -80,3 +94,7 @@ if __name__ == "__main__":
         ) as f:
             json.dump(v3_report, f, indent=2)
 
+        if not v2_report and not v3_report:
+            raise ValueError(
+                "Both v2 and v3 reports are empty — no fees collected at all"
+            )
