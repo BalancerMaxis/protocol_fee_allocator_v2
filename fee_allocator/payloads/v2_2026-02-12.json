@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1770982245,
+  "createdAt": 1770995647,
   "meta": {
     "name": "Transactions Batch",
     "description": "",
@@ -37,7 +37,7 @@
     },
     {
       "to": "0x53aD4Cd1F1e52DD02aa9FC4A8250A1b74F351CA2",
-      "value": "427165643181667",
+      "value": "428164520162839",
       "contractMethod": {
         "inputs": [
           {
@@ -119,7 +119,7 @@
       "contractInputsValues": {
         "params": "[\"42161\",\"0x8135d6AbFd42707A87A7b94c5CFA3529f9b432AD\",\"0x7c68c42De679ffB0f16216154C996C354cF1161B\",\"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\"2\",\"410315200\",\"410315200\",[],\"0x0000000000000000000000000000000000000000\",false]",
         "destinationChainId": "42161",
-        "additionalGasLimit": "428827",
+        "additionalGasLimit": "430818",
         "votemarket": "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7"
       }
     },
