@@ -192,6 +192,10 @@ class StakeDAOPlatform(BribePlatform):
             if chain_name == "mainnet":
                 destination_chain_name = "arbitrum"
                 destination_chain_id = AddrBook.chain_ids_by_name["arbitrum"]
+            elif chain_name == "gnosis":
+                # Gnosis gauges redirect bribes to Arbitrum (similar to mainnet)
+                destination_chain_name = "arbitrum"
+                destination_chain_id = AddrBook.chain_ids_by_name["arbitrum"]
             elif chain_name in self.SUPPORTED_L2_CHAINS:
                 destination_chain_name = chain_name
                 destination_chain_id = chain_id
