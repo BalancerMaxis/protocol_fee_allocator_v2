@@ -1,10 +1,12 @@
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Set, Tuple, Any
 import pandas as pd
+import requests
 from web3 import Web3
 from .base import BribePlatform
 from bal_tools.safe_tx_builder import SafeContract
 from bal_tools import Web3Rpc
 from pathlib import Path
+from fee_allocator.constants import VOTEMARKET_CONFIG_URL
 from fee_allocator.logger import logger
 from bal_addresses import AddrBook
 from eth_abi import encode
@@ -13,8 +15,8 @@ import os
 
 
 class StakeDAOPlatform(BribePlatform):
-    SUPPORTED_L2_CHAINS = ["arbitrum", "optimism", "base", "polygon"]
     AURA_VEBAL_LOCKER = Web3.to_checksum_address("0xaF52695E1bB01A16D33D7194C28C42b10e0Dbec2")
+    DEFAULT_DESTINATION_CHAIN = "arbitrum"
     BASE_GAS_LIMIT = 50000
     GAS_BUFFER_MULTIPLIER = 1.25
     ABI_DIR = Path(__file__).parent.parent / "abi"
@@ -37,8 +39,18 @@ class StakeDAOPlatform(BribePlatform):
         self.usdc_address = book["tokens/USDC"]
         self._gauge_to_chain_cache = {}
         self._build_gauge_to_chain_map()
+        self.supported_chains = self._fetch_supported_chains()
 
         self.w3 = Web3Rpc("mainnet", os.environ.get("DRPC_KEY"))
+
+    @staticmethod
+    def _fetch_supported_chains() -> Set[str]:
+        response = requests.get(VOTEMARKET_CONFIG_URL)
+        response.raise_for_status()
+        data = response.json()
+        chain_id_to_name = {v: k for k, v in AddrBook.chain_ids_by_name.items()}
+        chain_ids = {entry["chainId"] for entry in data["data"] if entry["protocol"] == "balancer"}
+        return {chain_id_to_name[cid] for cid in chain_ids}
 
     def _build_gauge_to_chain_map(self):
         for chain in self.run_config.all_chains:
@@ -189,18 +201,12 @@ class StakeDAOPlatform(BribePlatform):
 
             mantissa = round(row["amount"] * 1e6)
 
-            if chain_name == "mainnet":
-                destination_chain_name = "arbitrum"
-                destination_chain_id = AddrBook.chain_ids_by_name["arbitrum"]
-            elif chain_name == "gnosis":
-                # Gnosis gauges redirect bribes to Arbitrum (similar to mainnet)
-                destination_chain_name = "arbitrum"
-                destination_chain_id = AddrBook.chain_ids_by_name["arbitrum"]
-            elif chain_name in self.SUPPORTED_L2_CHAINS:
+            if chain_name in self.supported_chains:
                 destination_chain_name = chain_name
                 destination_chain_id = chain_id
             else:
-                raise ValueError(f"Chain {chain_name} not supported by StakeDAO v2. Supported chains: mainnet, {', '.join(self.SUPPORTED_L2_CHAINS)}")
+                destination_chain_name = self.DEFAULT_DESTINATION_CHAIN
+                destination_chain_id = AddrBook.chain_ids_by_name[self.DEFAULT_DESTINATION_CHAIN]
 
             destination_book = AddrBook(destination_chain_name)
             vote_market_v2_address = destination_book.flatbook["stake_dao/votemarket_v2"]
