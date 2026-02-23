@@ -414,10 +414,10 @@ class CorePoolChain(AbstractCorePoolChain):
         end_snaps = None
         if self.chains.protocol_version == "v2":
             start_snaps = self.subgraph.get_balancer_pool_snapshots(
-                block=self.block_range[0], pools_per_req=1000, limit=5000
+                block=self.block_range[0], pools_per_req=1000, limit=5000, use_full_subgraph=True
             )
             end_snaps = self.subgraph.get_balancer_pool_snapshots(
-                block=self.block_range[1], pools_per_req=1000, limit=5000
+                block=self.block_range[1], pools_per_req=1000, limit=5000, use_full_subgraph=True
             )
 
         pools = self.subgraph.fetch_all_pools_info()
