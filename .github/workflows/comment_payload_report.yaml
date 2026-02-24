@@ -9,10 +9,6 @@ on:
       end_date:
         required: true
         type: string
-  pull_request_target:
-    types: [opened, synchronize]
-    paths:
-      - "fee_allocator/payloads/*.json"
 
 jobs:
   comment-report:

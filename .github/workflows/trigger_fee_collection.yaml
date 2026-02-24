@@ -13,6 +13,11 @@ on:
     paths:
       - "fee_allocator/fees_collected/*.json"
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 jobs:
   process_fees:
     runs-on: ubuntu-latest
