@@ -27,6 +27,12 @@ jobs:
           pip install -r requirements-dev.txt
           pip install pytest-timeout
 
+      - name: Validate fee JSON files
+        run: |
+          for f in fee_allocator/fees_collected/v*_fees_*.json; do
+            python -m json.tool "$f" > /dev/null
+          done
+
       - name: Run pytest
         env:
           DRPC_KEY: ${{ secrets.DRPC_KEY }}
