@@ -55,30 +55,6 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_to": "0xea06e1b4259730724885a39CE3ca670eFB020E26",
-        "_value": "-2000"
-      }
-    },
-    {
-      "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "value": "0",
-      "contractMethod": {
-        "inputs": [
-          {
-            "name": "_to",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "_value",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ],
-        "name": "transfer",
-        "payable": false
-      },
-      "contractInputsValues": {
         "_to": "0xB7aadD330A64088A85e500874DCDcFB7F253fEB4",
         "_value": "691270875"
       }
