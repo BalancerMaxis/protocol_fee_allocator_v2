@@ -472,5 +472,26 @@
     "periodStart": 1769644800,
     "periodEnd": 1770854400,
     "bribeThreshold": 390
+  },
+  {
+    "feesCollected": 18497.17,
+    "totalDistributed": 18497.17,
+    "feesNotDistributed": 0.0,
+    "coreFees": 307.53,
+    "noncoreFees": 18189.65,
+    "totalIncentives": 0.0,
+    "feesToDao": 3153.71,
+    "feesToVebal": 14652.2,
+    "feesToPartners": 691.27,
+    "feesToBeets": 0.0,
+    "incentivesPct": 0.0,
+    "feesToDaoPct": 0.1705,
+    "feesToVebalPct": 0.7921,
+    "feesToPartnersPct": 0.0374,
+    "feesToBeetsPct": 0.0,
+    "createdAt": 1772132372,
+    "periodStart": 1770854400,
+    "periodEnd": 1772064000,
+    "bribeThreshold": 410
   }
 ]
