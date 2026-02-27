@@ -1,0 +1,20 @@
+name: Trigger Dune Revenue Upload
+
+on:
+  push:
+    branches:
+      - biweekly-runs
+    paths:
+      - "fee_allocator/summaries/*.json"
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger dune revenue upload
+        run: |
+          gh api repos/${{ secrets.DUNE_UPLOAD_REPO }}/dispatches \
+            -f event_type=recon-updated
+        env:
+          GH_TOKEN: ${{ secrets.DUNE_UPLOAD_TOKEN }}
