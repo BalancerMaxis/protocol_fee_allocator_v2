@@ -195,9 +195,27 @@ class FeeAllocator:
         self, output_path: Path = Path("fee_allocator/allocations/incentives")
     ) -> Path:
         logger.info("generating incentives csv")
+
+        aura_vebal_share = self.run_config.mainnet.subgraph.calculate_aura_vebal_share(
+            self.run_config.mainnet.web3, self.run_config.mainnet.block_range[1]
+        )
+        logger.info(f"Aura veBAL share: {aura_vebal_share:.4f}")
+
         output = []
         for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
+                total_incentives = core_pool.total_to_incentives_usd
+
+                if core_pool.voting_pool_override == "aura":
+                    pool_aura_share = Decimal(1)
+                elif core_pool.voting_pool_override == "bal":
+                    pool_aura_share = Decimal(0)
+                else:
+                    pool_aura_share = aura_vebal_share
+
+                aura_incentives = round(total_incentives * pool_aura_share, 4)
+                bal_incentives = round(total_incentives - total_incentives * pool_aura_share, 4)
+
                 output.append(
                     {
                         "pool_id": core_pool.pool_id,
@@ -208,7 +226,9 @@ class FeeAllocator:
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "fees_to_beets": round(core_pool.to_beets_usd, 4),
-                        "total_incentives": round(core_pool.total_to_incentives_usd, 4),
+                        "total_incentives": round(total_incentives, 4),
+                        "aura_incentives": aura_incentives,
+                        "bal_incentives": bal_incentives,
                         "redirected_incentives": round(
                             core_pool.redirected_incentives_usd, 4
                         ),
@@ -219,7 +239,7 @@ class FeeAllocator:
                 )
 
         df = pd.DataFrame(output)
-        
+
         sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
         output_path = (
             PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{self.start_date}_{self.end_date}.csv"
@@ -384,8 +404,10 @@ class FeeAllocator:
             platform = StakeDAOPlatform(self.book, self.run_config)
             platform.process_bribes(bribe_df, builder, usdc)
 
-        usdc.transfer(payment_df["target"], dao_fee_usdc)
-        usdc.transfer(beets_df["target"], beets_fee_usdc)
+        if dao_fee_usdc > 0:
+            usdc.transfer(payment_df["target"], dao_fee_usdc)
+        if beets_fee_usdc > 0:
+            usdc.transfer(beets_df["target"], beets_fee_usdc)
 
         alliance_fee_usdc_spent = 0
         if alliance_csv:
@@ -447,11 +469,16 @@ class FeeAllocator:
         """
         total_fees = self.run_config.total_fees_collected_usd
         total_incentives = Decimal(0)
+        total_aura_incentives = Decimal(0)
         total_dao = Decimal(0)
         total_vebal = Decimal(0)
         total_partner = Decimal(0)
         total_distributed = Decimal(0)
         total_beets = Decimal(0)
+
+        aura_vebal_share = self.run_config.mainnet.subgraph.calculate_aura_vebal_share(
+            self.run_config.mainnet.web3, self.run_config.mainnet.block_range[1]
+        )
 
         for chain in self.run_config.all_chains:
             for pool in chain.core_pools:
@@ -466,6 +493,11 @@ class FeeAllocator:
                 total_vebal += pool.to_vebal_usd
                 total_partner += pool.to_partner_usd
                 total_beets += pool.to_beets_usd
+
+                if pool.voting_pool_override == "aura":
+                    total_aura_incentives += pool.total_to_incentives_usd
+                elif pool.voting_pool_override != "bal":
+                    total_aura_incentives += pool.total_to_incentives_usd * aura_vebal_share
 
             total_dao += chain.noncore_to_dao_usd + chain.alliance_noncore_to_dao_usd + chain.partner_noncore_to_dao_usd
             total_vebal += chain.noncore_to_vebal_usd + chain.alliance_noncore_to_vebal_usd + chain.partner_noncore_to_vebal_usd
@@ -511,6 +543,11 @@ class FeeAllocator:
             "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToBeetsPct": float(round(total_beets / total_distributed, 4)) if total_distributed > 0 else 0,
+            "auraIncentives": float(round(total_aura_incentives, 2)),
+            "balIncentives": float(round(total_incentives - total_aura_incentives, 2)),
+            "auravebalShare": float(round(total_aura_incentives / total_incentives, 2)) if total_incentives > 0 else 0,
+            "auraIncentivesPct": float(round(total_aura_incentives / total_distributed, 4)) if total_distributed > 0 else 0,
+            "balIncentivesPct": float(round((total_incentives - total_aura_incentives) / total_distributed, 4)) if total_distributed > 0 else 0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1],

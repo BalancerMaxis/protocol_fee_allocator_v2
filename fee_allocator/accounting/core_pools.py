@@ -135,7 +135,11 @@ class PoolFee(AbstractPoolFee, PoolFeeData):
     
     def _get_voting_pool_override(self):
         pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
-        return pool_override.voting_pool_override if pool_override else None
+        if pool_override and pool_override.voting_pool_override:
+            return pool_override.voting_pool_override
+        if self.is_alliance_core_pool:
+            return "aura"
+        return None
 
     def _get_market_override(self):
         pool_override = self.chain.chains.pool_overrides.get(self.pool_id)
