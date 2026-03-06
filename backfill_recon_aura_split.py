@@ -14,6 +14,8 @@ SUMMARIES_DIR = PROJECT_ROOT / "fee_allocator" / "summaries"
 INCENTIVES_DIR = PROJECT_ROOT / "fee_allocator" / "allocations" / "incentives"
 BRIBES_DIR = PROJECT_ROOT / "fee_allocator" / "allocations" / "output_for_msig"
 
+STAKEDAO_MIGRATION_PERIOD_START = 1767225600
+
 
 def _ts_to_date_str(ts: int) -> str:
     return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -36,7 +38,7 @@ def _load_gauge_data_from_bribe_csv(csv_path: Path) -> pd.DataFrame:
     bribe_rows = bribe_rows[bribe_rows["amount"] > 0].copy()
     if bribe_rows.empty:
         return None
-    bribe_rows = bribe_rows.rename(columns={"target": "gauge_address"})
+    bribe_rows = bribe_rows.rename(columns={"target": "gauge_address", "amount": "total_incentives"})
     if "voting_pool_override" not in bribe_rows.columns:
         bribe_rows["voting_pool_override"] = ""
     bribe_rows["voting_pool_override"] = bribe_rows["voting_pool_override"].fillna("")
@@ -89,10 +91,24 @@ def backfill(dry_run: bool = False):
 
         modified = False
         for entry in data:
+            if entry["periodStart"] < STAKEDAO_MIGRATION_PERIOD_START:
+                continue
+
             total_incentives = _get_total_incentives(entry)
             aura_incentives = entry.get("auraIncentives", 0) or 0
+            bal_incentives = entry.get("balIncentives", 0) or 0
 
-            if aura_incentives != 0 or total_incentives == 0:
+            if (aura_incentives + bal_incentives) != 0:
+                continue
+
+            if total_incentives == 0:
+                if "auraIncentives" not in entry:
+                    entry["auraIncentives"] = 0.0
+                    entry["balIncentives"] = 0.0
+                    entry["auravebalShare"] = 0
+                    entry["auraIncentivesPct"] = 0.0
+                    entry["balIncentivesPct"] = 0.0
+                    modified = True
                 continue
 
             period_start = entry["periodStart"]
