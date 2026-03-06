@@ -1,0 +1,46 @@
+name: Backfill Aura/BAL Split
+
+on:
+  schedule:
+    - cron: "0 12 * * 2"  # Weekly Tuesday 12:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: biweekly-runs
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip3 install -r requirements.txt
+
+      - name: Run backfill
+        run: python3 backfill_recon_aura_split.py
+
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "task: backfill aura/bal split data in recon"
+          title: "Backfill Aura/BAL Split in Recon"
+          body: |
+            Automated backfill of `auraIncentives`, `balIncentives`, and `auravebalShare` fields
+            in recon JSON files using VoteMarket analytics data.
+
+            Entries with `auraIncentives == 0` and `totalIncentives > 0` were updated.
+          branch: gha-aura-split-backfill
+          branch-suffix: timestamp
+          delete-branch: true
+          labels: Aura-Split-Backfill
