@@ -456,11 +456,11 @@
     "periodStart": 1768435200,
     "periodEnd": 1769644800,
     "bribeThreshold": 490,
-    "auraIncentives": 4111.32,
-    "balIncentives": 9761.36,
-    "auravebalShare": 0.3,
-    "auraIncentivesPct": 0.1577,
-    "balIncentivesPct": 0.3745
+    "auraIncentives": 9207.38,
+    "balIncentives": 4665.29,
+    "auravebalShare": 0.66,
+    "auraIncentivesPct": 0.3532,
+    "balIncentivesPct": 0.179
   },
   {
     "feesCollected": 42204.24,
@@ -482,11 +482,11 @@
     "periodStart": 1769644800,
     "periodEnd": 1770854400,
     "bribeThreshold": 390,
-    "auraIncentives": 5957.27,
-    "balIncentives": 12529.01,
-    "auravebalShare": 0.32,
-    "auraIncentivesPct": 0.1412,
-    "balIncentivesPct": 0.2969
+    "auraIncentives": 9583.32,
+    "balIncentives": 8902.96,
+    "auravebalShare": 0.52,
+    "auraIncentivesPct": 0.2271,
+    "balIncentivesPct": 0.2109
   },
   {
     "feesCollected": 24064.52,
@@ -508,10 +508,10 @@
     "periodStart": 1770854400,
     "periodEnd": 1772064000,
     "bribeThreshold": 410,
-    "auraIncentives": 5496.92,
-    "balIncentives": 5487.9,
-    "auravebalShare": 0.5,
-    "auraIncentivesPct": 0.2284,
-    "balIncentivesPct": 0.228
+    "auraIncentives": 8383.21,
+    "balIncentives": 2601.61,
+    "auravebalShare": 0.76,
+    "auraIncentivesPct": 0.3484,
+    "balIncentivesPct": 0.1081
   }
 ]

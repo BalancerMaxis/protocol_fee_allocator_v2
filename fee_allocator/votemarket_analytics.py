@@ -20,14 +20,14 @@ def _find_matching_rounds(metadata: list, period_start: int, period_end: int) ->
     return [r["id"] for r in metadata if r["endVoting"] > period_start and r["endVoting"] <= period_end]
 
 
-def _aggregate_deposited_per_gauge(round_url_template: str, round_ids: List[int]) -> Dict[str, float]:
-    deposited = {}
+def _aggregate_votes_per_gauge(round_url_template: str, round_ids: List[int]) -> Dict[str, float]:
+    votes = {}
     for rid in round_ids:
         data = _fetch_json(round_url_template.format(round_id=rid))
         for gauge in data["analytics"]:
             addr = gauge["gauge"].lower()
-            deposited[addr] = deposited.get(addr, 0) + gauge["totalDeposited"]
-    return deposited
+            votes[addr] = votes.get(addr, 0) + gauge["nonBlacklistedVotes"]
+    return votes
 
 
 def get_aura_share_per_gauge(period_start: int, period_end: int) -> Dict[str, Decimal]:
@@ -37,16 +37,20 @@ def get_aura_share_per_gauge(period_start: int, period_end: int) -> Dict[str, De
     bal_round_ids = _find_matching_rounds(bal_metadata, period_start, period_end)
     aura_round_ids = _find_matching_rounds(aura_metadata, period_start, period_end)
 
+    if not bal_round_ids and not aura_round_ids:
+        logger.info(f"VoteMarket: no rounds found for period {period_start}-{period_end}")
+        return {}
+
     logger.info(f"VoteMarket rounds for period {period_start}-{period_end}: bal={bal_round_ids} aura={aura_round_ids}")
 
-    bal_deposited = _aggregate_deposited_per_gauge(BALANCER_ROUND_URL, bal_round_ids)
-    aura_deposited = _aggregate_deposited_per_gauge(VLAURA_ROUND_URL, aura_round_ids)
+    bal_votes = _aggregate_votes_per_gauge(BALANCER_ROUND_URL, bal_round_ids)
+    aura_votes = _aggregate_votes_per_gauge(VLAURA_ROUND_URL, aura_round_ids)
 
     shares = {}
-    all_gauges = set(bal_deposited) | set(aura_deposited)
+    all_gauges = set(bal_votes) | set(aura_votes)
     for gauge in all_gauges:
-        b = bal_deposited.get(gauge, 0)
-        a = aura_deposited.get(gauge, 0)
+        b = bal_votes.get(gauge, 0)
+        a = aura_votes.get(gauge, 0)
         total = b + a
         shares[gauge] = Decimal(str(a / total)) if total > 0 else Decimal(0)
 

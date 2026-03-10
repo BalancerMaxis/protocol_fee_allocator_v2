@@ -2,7 +2,7 @@ name: Backfill Aura/BAL Split
 
 on:
   schedule:
-    - cron: "0 12 * * 2"  # Weekly Tuesday 12:00 UTC
+    - cron: "0 8 * * 4" # Weekly Thursday 08:00 UTC
   workflow_dispatch:
 
 jobs:
