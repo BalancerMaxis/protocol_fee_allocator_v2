@@ -429,7 +429,12 @@
     "createdAt": 1768484870,
     "periodStart": 1767225600,
     "periodEnd": 1768435200,
-    "bribeThreshold": 490
+    "bribeThreshold": 490,
+    "auraIncentives": 0.0,
+    "balIncentives": 0.0,
+    "auravebalShare": 0,
+    "auraIncentivesPct": 0.0,
+    "balIncentivesPct": 0.0
   },
   {
     "feesCollected": 17576.73,
@@ -450,7 +455,12 @@
     "createdAt": 1769701777,
     "periodStart": 1768435200,
     "periodEnd": 1769644800,
-    "bribeThreshold": 490
+    "bribeThreshold": 490,
+    "auraIncentives": 0.0,
+    "balIncentives": 0.0,
+    "auravebalShare": 0,
+    "auraIncentivesPct": 0.0,
+    "balIncentivesPct": 0.0
   },
   {
     "feesCollected": 31650.06,
@@ -471,7 +481,12 @@
     "createdAt": 1770995647,
     "periodStart": 1769644800,
     "periodEnd": 1770854400,
-    "bribeThreshold": 390
+    "bribeThreshold": 390,
+    "auraIncentives": 0.0,
+    "balIncentives": 410.32,
+    "auravebalShare": 0.0,
+    "auraIncentivesPct": 0.0,
+    "balIncentivesPct": 0.013
   },
   {
     "feesCollected": 18497.17,
@@ -492,6 +507,11 @@
     "createdAt": 1772132372,
     "periodStart": 1770854400,
     "periodEnd": 1772064000,
-    "bribeThreshold": 410
+    "bribeThreshold": 410,
+    "auraIncentives": 0.0,
+    "balIncentives": 0.0,
+    "auravebalShare": 0,
+    "auraIncentivesPct": 0.0,
+    "balIncentivesPct": 0.0
   }
 ]

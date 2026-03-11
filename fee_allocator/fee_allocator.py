@@ -195,20 +195,27 @@ class FeeAllocator:
         self, output_path: Path = Path("fee_allocator/allocations/incentives")
     ) -> Path:
         logger.info("generating incentives csv")
+
         output = []
         for chain in self.run_config.all_chains:
             for core_pool in chain.core_pools:
+                total_incentives = core_pool.total_to_incentives_usd
+
                 output.append(
                     {
                         "pool_id": core_pool.pool_id,
                         "chain": chain.name,
                         "symbol": core_pool.symbol,
+                        "gauge_address": core_pool.gauge_address or "",
+                        "voting_pool_override": core_pool.voting_pool_override or "",
                         "bpt_price": round(core_pool.bpt_price, 4),
                         "earned_fees": round(core_pool.total_earned_fees_usd_twap, 4),
                         "fees_to_vebal": round(core_pool.to_vebal_usd, 4),
                         "fees_to_dao": round(core_pool.to_dao_usd, 4),
                         "fees_to_beets": round(core_pool.to_beets_usd, 4),
-                        "total_incentives": round(core_pool.total_to_incentives_usd, 4),
+                        "total_incentives": round(total_incentives, 4),
+                        "aura_incentives": Decimal(0),
+                        "bal_incentives": Decimal(0),
                         "redirected_incentives": round(
                             core_pool.redirected_incentives_usd, 4
                         ),
@@ -219,7 +226,7 @@ class FeeAllocator:
                 )
 
         df = pd.DataFrame(output)
-        
+
         sorted_df = df.sort_values(by=["chain", "earned_fees"], ascending=False)
         output_path = (
             PROJECT_ROOT / output_path / f"{self.run_config.protocol_version}_incentives_{self.start_date}_{self.end_date}.csv"
@@ -384,8 +391,10 @@ class FeeAllocator:
             platform = StakeDAOPlatform(self.book, self.run_config)
             platform.process_bribes(bribe_df, builder, usdc)
 
-        usdc.transfer(payment_df["target"], dao_fee_usdc)
-        usdc.transfer(beets_df["target"], beets_fee_usdc)
+        if dao_fee_usdc > 0:
+            usdc.transfer(payment_df["target"], dao_fee_usdc)
+        if beets_fee_usdc > 0:
+            usdc.transfer(beets_df["target"], beets_fee_usdc)
 
         alliance_fee_usdc_spent = 0
         if alliance_csv:
@@ -511,6 +520,11 @@ class FeeAllocator:
             "feesToVebalPct": float(round(total_vebal / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToPartnersPct": float(round(total_partner / total_distributed, 4)) if total_distributed > 0 else 0,
             "feesToBeetsPct": float(round(total_beets / total_distributed, 4)) if total_distributed > 0 else 0,
+            "auraIncentives": 0.0,
+            "balIncentives": 0.0,
+            "auravebalShare": 0,
+            "auraIncentivesPct": 0.0,
+            "balIncentivesPct": 0.0,
             "createdAt": int(datetime.datetime.now().timestamp()),
             "periodStart": self.date_range[0],
             "periodEnd": self.date_range[1],
