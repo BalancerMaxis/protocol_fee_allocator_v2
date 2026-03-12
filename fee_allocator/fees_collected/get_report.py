@@ -38,7 +38,11 @@ def get_report(start_date, end_date, env_id):
         print(f"No net fees for env {env_id}, returning empty report")
         return {}
 
-    depositors = {k.replace("-v3", ""): int(v) for k, v in data["depositors"].items()}
+    depositors = {
+        k.replace("-v3", ""): int(v)
+        for k, v in data["depositors"].items()
+        if int(v) > 0
+    }
     total_gross = sum(depositors.values())
 
     if total_gross != total_gross_usdc:
@@ -71,11 +75,10 @@ if __name__ == "__main__":
     if bool(int(today.strftime("%V")) % 2):
         # week number is uneven; there should be a new report
 
-        yesterday = today - timedelta(days=1)
         epoch_start = today - timedelta(days=14)
 
         v2_report = get_report(
-            yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V2_ENV_ID
+            epoch_start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V2_ENV_ID
         )
 
         with open(
@@ -85,7 +88,7 @@ if __name__ == "__main__":
             json.dump(v2_report, f, indent=2)
 
         v3_report = get_report(
-            yesterday.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V3_ENV_ID
+            epoch_start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), V3_ENV_ID
         )
 
         with open(
