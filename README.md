@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/BalancerMaxis/protocol_fee_allocator_v2)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/balancer/protocol_fee_allocator_v2)
 
 
 
