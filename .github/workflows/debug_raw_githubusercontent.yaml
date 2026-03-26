@@ -18,9 +18,55 @@ jobs:
       - name: Install dependencies (same as trigger_fee_collection)
         run: pip3 install -r requirements.txt
 
-      - name: Import test
+      - name: Debug
         run: |
-          python3 -c "
-          from fee_allocator.fee_allocator import FeeAllocator
-          print('OK')
-          "
+          python3 << 'PYEOF'
+          import sys, json, importlib, traceback
+          print(f"python: {sys.version}")
+
+          # 1) Baseline: test URL fetch with just requests (before any bal_* imports)
+          import requests
+          print(f"requests: {requests.__version__}")
+          url = "https://raw.githubusercontent.com/balancer/bal_addresses/refs/heads/main/extras/chains.json"
+          resp = requests.get(url)
+          print(f"\npre-import fetch: status={resp.status_code} len={len(resp.content)}")
+          print(f"  bytes[:50] = {resp.content[:50]}")
+          try:
+              resp.json()
+              print(f"  json(): OK")
+          except Exception as e:
+              print(f"  json(): FAILED - {e}")
+
+          # 2) Import every dep that gets loaded before bal_tools.utils
+          #    to see if any of them break json/requests
+          print("\n--- importing deps one by one ---")
+          for mod in ["web3", "gql", "pydantic", "munch", "dotmap", "json_fix", "lxml", "pandas", "numpy"]:
+              try:
+                  importlib.import_module(mod)
+                  print(f"  {mod}: OK")
+              except Exception as e:
+                  print(f"  {mod}: FAILED ({e})")
+
+          # 3) After all deps loaded, test the same URL again
+          resp2 = requests.get(url)
+          print(f"\npost-import fetch: status={resp2.status_code} len={len(resp2.content)}")
+          print(f"  bytes[:50] = {resp2.content[:50]}")
+          try:
+              resp2.json()
+              print(f"  json(): OK")
+          except Exception as e:
+              print(f"  json(): FAILED - {e}")
+
+          # 4) Check if json.loads itself was modified
+          print(f"\njson.loads is stdlib: {json.loads.__module__ == 'json'}")
+          print(f"json.loads: {json.loads}")
+
+          # 5) Try the actual import that crashes in CI
+          print("\n=== from fee_allocator.fee_allocator import FeeAllocator ===")
+          try:
+              from fee_allocator.fee_allocator import FeeAllocator
+              print("OK")
+          except Exception as e:
+              print(f"FAILED: {type(e).__name__}: {e}")
+              traceback.print_exc()
+          PYEOF
