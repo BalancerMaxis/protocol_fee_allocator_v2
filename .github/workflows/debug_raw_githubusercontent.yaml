@@ -21,78 +21,52 @@ jobs:
       - name: Debug
         run: |
           python3 << 'PYEOF'
-          import sys, json
-          print(f"Python: {sys.version}")
+          import sys, json, importlib, traceback
+          print(f"python: {sys.version}")
 
-          # Check if json module has been monkey-patched
-          print(f"\n=== json module identity ===")
-          print(f"json module: {json}")
-          print(f"json.loads: {json.loads}")
-          print(f"json.JSONDecoder: {json.JSONDecoder}")
-
-          # Check if json_fix is installed and what it does
-          try:
-              import json_fix
-              print(f"json_fix version: {json_fix.__version__ if hasattr(json_fix, '__version__') else 'unknown'}")
-              print(f"json.loads after json_fix: {json.loads}")
-          except ImportError:
-              print("json_fix not installed")
-
-          # Check what requests uses for JSON
+          # 1) Baseline: test URL fetch with just requests (before any bal_* imports)
           import requests
-          print(f"\n=== requests JSON backend ===")
           print(f"requests: {requests.__version__}")
-          from requests.compat import complexjson
-          print(f"complexjson: {complexjson}")
-          print(f"complexjson.loads: {complexjson.loads}")
-
-          # Check if simplejson is available
+          url = "https://raw.githubusercontent.com/balancer/bal_addresses/refs/heads/main/extras/chains.json"
+          resp = requests.get(url)
+          print(f"\npre-import fetch: status={resp.status_code} len={len(resp.content)}")
+          print(f"  bytes[:50] = {resp.content[:50]}")
           try:
-              import simplejson
-              print(f"simplejson: {simplejson.__version__}")
-          except ImportError:
-              print("simplejson not installed")
+              resp.json()
+              print(f"  json(): OK")
+          except Exception as e:
+              print(f"  json(): FAILED - {e}")
 
-          # Test the exact URLs used at import time
-          print(f"\n=== Testing raw.githubusercontent.com URLs ===")
-          urls = [
-              "https://raw.githubusercontent.com/balancer/bal_addresses/refs/heads/main/extras/chains.json",
-              "https://raw.githubusercontent.com/balancer/bal_addresses/main/extras/chains.json",
-              "https://raw.githubusercontent.com/balancer/bal_addresses/main/extras/func_desc_by_name.json",
-          ]
-          for url in urls:
-              resp = requests.get(url)
-              print(f"\n{url}")
-              print(f"  Status: {resp.status_code}")
-              print(f"  Encoding: {resp.encoding}")
-              print(f"  Bytes[:20]: {resp.content[:20]}")
-              print(f"  Text[:100]: {repr(resp.text[:100])}")
+          # 2) Import every dep that gets loaded before bal_tools.utils
+          #    to see if any of them break json/requests
+          print("\n--- importing deps one by one ---")
+          for mod in ["web3", "gql", "pydantic", "munch", "dotmap", "json_fix", "lxml", "pandas", "numpy"]:
               try:
-                  resp.json()
-                  print(f"  json(): OK")
+                  importlib.import_module(mod)
+                  print(f"  {mod}: OK")
               except Exception as e:
-                  print(f"  json(): FAILED - {e}")
+                  print(f"  {mod}: FAILED ({e})")
 
-          # Test the actual import chain that fails in CI
-          print(f"\n=== Importing bal_tools (the first thing that crashes) ===")
+          # 3) After all deps loaded, test the same URL again
+          resp2 = requests.get(url)
+          print(f"\npost-import fetch: status={resp2.status_code} len={len(resp2.content)}")
+          print(f"  bytes[:50] = {resp2.content[:50]}")
           try:
-              from bal_tools.utils import CHAINS
-              print(f"OK - keys: {list(CHAINS.keys())}")
+              resp2.json()
+              print(f"  json(): OK")
           except Exception as e:
-              print(f"FAILED: {type(e).__name__}: {e}")
+              print(f"  json(): FAILED - {e}")
 
-          print(f"\n=== Importing bal_addresses ===")
-          try:
-              from bal_addresses import AddrBook
-              print(f"OK - chains: {list(AddrBook.chain_ids_by_name.keys())[:5]}")
-          except Exception as e:
-              print(f"FAILED: {type(e).__name__}: {e}")
+          # 4) Check if json.loads itself was modified
+          print(f"\njson.loads is stdlib: {json.loads.__module__ == 'json'}")
+          print(f"json.loads: {json.loads}")
 
-          # Test the exact import main_combined.py does
-          print(f"\n=== Importing fee_allocator (exact CI import chain) ===")
+          # 5) Try the actual import that crashes in CI
+          print("\n=== from fee_allocator.fee_allocator import FeeAllocator ===")
           try:
               from fee_allocator.fee_allocator import FeeAllocator
               print("OK")
           except Exception as e:
               print(f"FAILED: {type(e).__name__}: {e}")
+              traceback.print_exc()
           PYEOF
