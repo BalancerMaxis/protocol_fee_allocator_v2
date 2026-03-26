@@ -1,0 +1,48 @@
+name: Debug raw.githubusercontent.com
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test raw.githubusercontent.com responses
+        run: |
+          for URL in \
+            "https://raw.githubusercontent.com/balancer/bal_addresses/refs/heads/main/extras/chains.json" \
+            "https://raw.githubusercontent.com/balancer/bal_addresses/main/extras/chains.json" \
+            "https://raw.githubusercontent.com/BalancerMaxis/bal_addresses/main/extras/chains.json"; do
+            echo "=== $URL ==="
+            echo "--- Headers ---"
+            curl -sI "$URL"
+            echo "--- Status code ---"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" "$URL"
+            echo "--- First 200 bytes ---"
+            curl -s "$URL" | head -c 200
+            echo ""
+            echo ""
+          done
+
+      - name: Test Python requests behavior
+        run: |
+          pip3 install requests
+          python3 -c "
+          import requests
+          urls = [
+              'https://raw.githubusercontent.com/balancer/bal_addresses/refs/heads/main/extras/chains.json',
+              'https://raw.githubusercontent.com/balancer/bal_addresses/main/extras/chains.json',
+          ]
+          for url in urls:
+              print(f'=== {url} ===')
+              resp = requests.get(url)
+              print(f'Status: {resp.status_code}')
+              print(f'Content-Type: {resp.headers.get(\"content-type\")}')
+              print(f'Body[:200]: {resp.text[:200]}')
+              try:
+                  resp.json()
+                  print('json(): OK')
+              except Exception as e:
+                  print(f'json(): FAILED - {e}')
+              print()
+          "
