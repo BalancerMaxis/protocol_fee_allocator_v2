@@ -66,11 +66,6 @@ class PayloadVisualizer:
                 partner_addresses.append(addr_lower)
                 partner_names[addr_lower] = partner['name']
 
-        ezkl_addr = "0xb7aadd330a64088a85e500874dcdcfb7f253feb4"
-        if ezkl_addr not in partner_addresses:
-            partner_addresses.append(ezkl_addr)
-            partner_names[ezkl_addr] = "ezkl"
-
         return alliance_addresses, alliance_names, partner_addresses, partner_names
     
     def format_amount(self, amount: str, token: str = "USDC") -> str:
