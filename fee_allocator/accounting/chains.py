@@ -31,7 +31,6 @@ from fee_allocator.constants import (
     FEE_CONSTANTS_URL,
     ALLIANCE_CONFIG_URL,
     PARTNER_CONFIG_URL,
-    EZKL_POOLS_URL,
     POOL_OVERRIDES_URL
 )
 from fee_allocator.accounting.decorators import round, require_pool_fee_data
@@ -70,8 +69,6 @@ class CorePoolRunConfig:
         self.fee_config = GlobalFeeConfig(**requests.get(FEE_CONSTANTS_URL).json())
         self.alliance_config = AllianceConfig(**requests.get(ALLIANCE_CONFIG_URL).json())
         self.partner_config = PartnerConfig(**requests.get(PARTNER_CONFIG_URL).json())
-        self.ezkl_pools = requests.get(EZKL_POOLS_URL).json()
-
         pool_overrides_raw = requests.get(POOL_OVERRIDES_URL).json()
 
         self.pool_overrides: Dict[str, PoolOverride] = {
@@ -290,13 +287,8 @@ class CorePoolChain(AbstractCorePoolChain):
 
             if partner.pool_types:
                 for pool_type in partner.pool_types:
-                    if pool_type == "EZKL":
-                        chain_ezkl_data = self.chains.ezkl_pools.get(self.name, {})
-                        pool_ids = chain_ezkl_data.get(self.chains.protocol_version, [])
-                        logger.info(f"Found {len(pool_ids)} EZKL {self.chains.protocol_version} pools for {partner.name} on {self.name}")
-                    else:
-                        pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
-                        logger.info(f"Found {len(pool_ids)} {pool_type} pools for {partner.name} on {self.name}")
+                    pool_ids = self.subgraph.fetch_pools_by_type(pool_type)
+                    logger.info(f"Found {len(pool_ids)} {pool_type} pools for {partner.name} on {self.name}")
 
                     for pool_id in pool_ids:
                         # Skip if already added from explicit list
