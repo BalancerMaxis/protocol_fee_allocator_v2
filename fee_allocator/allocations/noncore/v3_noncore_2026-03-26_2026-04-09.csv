@@ -1,0 +1,4 @@
+chain,total_fees_collected,total_fees_earned_twap,noncore_fees,noncore_to_dao,noncore_to_vebal,noncore_to_beets,dao_share_pct,vebal_share_pct,beets_share_pct
+arbitrum,7016.2213,6152.3972,789.7565,138.2074,651.5491,0.0000,17.50,82.50,0.00
+base,1064.6411,1011.3591,0.0000,0.0000,0.0000,0.0000,17.50,82.50,0.00
+mainnet,6434.5284,7294.2521,0.0000,0.0000,0.0000,0.0000,17.50,82.50,0.00
