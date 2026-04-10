@@ -23,7 +23,7 @@ jobs:
       - name: Get PR details
         if: ${{ inputs.pr_number }}
         id: pr-details
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0
 
       - name: Comment PR
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
